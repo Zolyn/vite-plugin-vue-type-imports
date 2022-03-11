@@ -19,7 +19,9 @@
         "playground/**/*.*"
       ],
       "rules": {
-        "no-restricted-imports": "off"
+        "no-restricted-imports": "off",
+        "curly": "off",
+        "no-console": "off"
       }
     }
   ]
