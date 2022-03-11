@@ -13,7 +13,7 @@
 ## Install
 ```bash
 # Install Plugin
-npm i -D vite-plugin-vue-type-imports
+npm i -D @zolyn/vite-plugin-vue-type-imports
 ```
 
 ```ts
@@ -21,7 +21,7 @@ npm i -D vite-plugin-vue-type-imports
 
 import { defineConfig } from 'vite'
 import Vue from '@vitejs/plugin-vue'
-import VueTypeImports from 'vite-plugin-vue-type-imports'
+import VueTypeImports from '@zolyn/vite-plugin-vue-type-imports'
 
 export default defineConfig({
   plugins: [
@@ -37,7 +37,7 @@ export default defineConfig({
 
 export default {
   buildModules: [
-    'vite-plugin-vue-type-imports/nuxt',
+    '@zolyn/vite-plugin-vue-type-imports/nuxt',
   ]
 }
 ```
@@ -67,4 +67,4 @@ defineProps<User>()
 
 ## License
 
-[MIT License](https://github.com/jacobclevenger/vite-plugin-vue-gql/blob/main/LICENSE) © 2021-PRESENT [Jacob Clevenger](https://github.com/jacobclevenger)
+[MIT License](https://mit-license.org) © 2021-PRESENT [Jacob Clevenger](https://github.com/jacobclevenger) & [Yumeoto Zorin](https://github.com/Zolyn)
