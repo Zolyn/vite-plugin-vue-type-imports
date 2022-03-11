@@ -79,3 +79,29 @@ export function replaceAtIndexes(source: string, replacements: Replacement[]) {
 
   return source
 }
+
+export function getInterfaceCode(source: string): string | false {
+  const clip = source.split('{')
+  if (clip.length !== 2)
+    return false
+
+  return clip[1].split('}')[0]
+}
+
+export function mergeInterfaceCode(source: string): string | false {
+  let result: string | boolean = ''
+  const clip = source.split('extends')
+
+  for (const snippet of clip) {
+    const code = getInterfaceCode(snippet)
+    if (code) {
+      result += code
+    }
+    else {
+      result = false
+      break
+    }
+  }
+
+  return result
+}

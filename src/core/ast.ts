@@ -69,6 +69,9 @@ export function getAvailableExportsFromAst(ast: Program) {
 
   const addExport = (node: ExportNamedDeclaration) => {
     for (const specifier of node.specifiers) {
+      if (!node.source)
+        continue
+
       if (specifier.type === 'ExportSpecifier' && specifier.exported.type === 'Identifier') {
         exports.push({
           start: specifier.exported.start!,

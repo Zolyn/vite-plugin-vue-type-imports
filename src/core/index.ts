@@ -4,7 +4,7 @@ import { parse, babelParse } from '@vue/compiler-sfc'
 import { Identifier } from '@babel/types'
 import generate from '@babel/generator'
 import { getUsedInterfacesFromAst, getAvailableImportsFromAst, extractTypesFromSource, extractImportNodes } from './ast'
-import { resolveModulePath, replaceAtIndexes, Replacement, groupImports, intersect } from './utils'
+import { resolveModulePath, replaceAtIndexes, Replacement, groupImports, intersect, mergeInterfaceCode } from './utils'
 
 export interface TransformOptions {
   id: string
@@ -27,7 +27,7 @@ export async function transform(code: string, options: TransformOptions) {
    * it to an import and then load the interface from the import and inline it
    * at the top of the vue script setup.
    */
-  const resolvedTypes = (await Promise.all(Object.entries(groupImports(imports))
+  let resolvedTypes = (await Promise.all(Object.entries(groupImports(imports))
     .map(async([url, importedTypes]) => {
       const intersection = intersect(importedTypes, interfaces)
       const path = await resolveModulePath(url, options.id, options.aliases)
@@ -74,6 +74,15 @@ export async function transform(code: string, options: TransformOptions) {
       })
     }
   })
+
+  if (resolvedTypes.length) {
+    const name = resolvedTypes[resolvedTypes.length - 1][0]
+    const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('')
+    const result = mergeInterfaceCode(interfaceCodes)
+
+    if (result)
+      resolvedTypes = [[name, `interface ${name} {${result}}`]]
+  }
 
   const transformedScriptSetup = [resolvedTypes.map(x => x[1]).join('\n'), replaceAtIndexes(scriptSetup.content, replacements)].join('\n')
   const transformedCode = [
