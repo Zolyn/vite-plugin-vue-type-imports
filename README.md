@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-<a href="https://www.npmjs.com/package/vite-plugin-vue-type-imports" target="__blank"><img src="https://img.shields.io/npm/v/vite-plugin-vue-type-imports?color=a356fe&label=Version" alt="NPM version"></a>
+<a href="https://www.npmjs.com/package/vite-plugin-vue-type-imports" target="__blank"><img src="https://img.shields.io/npm/v/@zolyn/vite-plugin-vue-type-imports?color=a356fe&label=Version" alt="NPM version"></a>
 </p>
 
 > ⚠️ This Plugin is still in Development and there may be bugs. Use at your own risk.
@@ -64,6 +64,9 @@ defineProps<User>()
 <template>...</template>
 ```
 
+## Known limitations
+- `import default` , `export default` and `export * from` syntax are not supported.
+- nested type parameters (e.g. `defineProps<Props<T>>()`) are not supported.
 
 ## License
 

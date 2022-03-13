@@ -1,16 +1,11 @@
-import { Options } from 'tsup'
+import { Options } from 'tsup';
 
 const config: Options = {
-  splitting: false,
-  format: ['esm', 'cjs'],
-  entryPoints: [
-    'src/index.ts',
-    'src/vite.ts',
-    'src/nuxt.ts',
-  ],
-  target: 'node14',
-  clean: true,
-  dts: true,
-}
+    format: ['esm', 'cjs'],
+    entry: ['./src/index.ts', './src/nuxt.ts'],
+    target: 'node14',
+    clean: true,
+    external: ['fast-glob', '@babel/types', '@babel/generator'],
+};
 
-export default config
+export default config;

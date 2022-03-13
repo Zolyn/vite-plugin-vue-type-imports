@@ -1,95 +1,118 @@
-import fs from 'node:fs/promises'
-import { AliasOptions, Alias } from 'vite'
-import { parse, babelParse } from '@vue/compiler-sfc'
-import { Identifier } from '@babel/types'
-import generate from '@babel/generator'
-import { getUsedInterfacesFromAst, getAvailableImportsFromAst, extractTypesFromSource, extractImportNodes } from './ast'
-import { resolveModulePath, replaceAtIndexes, Replacement, groupImports, intersect, mergeInterfaceCode } from './utils'
+import { babelParse, parse } from '@vue/compiler-sfc';
+import fs from 'fs/promises';
+import { Alias, AliasOptions } from 'vite';
+import {
+    extractImportNodes,
+    extractTypesFromSource,
+    getAvailableImportsFromAst,
+    getUsedInterfacesFromAst
+} from './ast';
+import { groupImports, intersect, mergeInterfaceCode, replaceAtIndexes, Replacement, resolveModulePath } from './utils';
 
 export interface TransformOptions {
-  id: string
-  root: string | undefined
-  aliases: ((AliasOptions | undefined) & Alias[]) | undefined
+    id: string;
+    aliases: ((AliasOptions | undefined) & Alias[]) | undefined;
 }
 
-export async function transform(code: string, options: TransformOptions) {
-  const { descriptor: { scriptSetup } } = parse(code)
+export async function transform(code: string, { id, aliases }: TransformOptions) {
+    const {
+        descriptor: { scriptSetup },
+    } = parse(code);
 
-  if (scriptSetup?.lang !== 'ts' || !scriptSetup.content)
-    return code
+    if (scriptSetup?.lang !== 'ts' || !scriptSetup.content) return code;
 
-  const ast = babelParse(scriptSetup.content, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] })
-  const imports = getAvailableImportsFromAst(ast.program)
-  const interfaces = getUsedInterfacesFromAst(ast.program)
+    const { program } = babelParse(scriptSetup.content, {
+        sourceType: 'module',
+        plugins: ['typescript', 'topLevelAwait'],
+    });
+    const imports = getAvailableImportsFromAst(program);
+    const interfaces = getUsedInterfacesFromAst(program);
 
-  /**
-   * For every interface used in defineProps or defineEmits, we need to match
-   * it to an import and then load the interface from the import and inline it
-   * at the top of the vue script setup.
-   */
-  let resolvedTypes = (await Promise.all(Object.entries(groupImports(imports))
-    .map(async([url, importedTypes]) => {
-      const intersection = intersect(importedTypes, interfaces)
-      const path = await resolveModulePath(url, options.id, options.aliases)
+    // console.log(interfaces);
+    // console.log(groupImports(imports));
 
-      if (path) {
-        const data = await fs.readFile(path, 'utf-8')
-        const types = (await extractTypesFromSource(data, intersection, {
-          relativePath: path,
-          aliases: options.aliases,
-        })).reverse()
+    /**
+     * For every interface used in defineProps or defineEmits, we need to match
+     * it to an import and then load the interface from the import and inline it
+     * at the top of the vue script setup.
+     */
+    let resolvedTypes = (
+        await Promise.all(
+            Object.entries(groupImports(imports)).map(async ([unresolvedPath, importedFields]) => {
+                const intersection = intersect(importedFields, interfaces);
 
-        return types
-      }
+                const path = await resolveModulePath(unresolvedPath, id, aliases);
 
-      return null
-    })))
-    .flat()
-    .filter(x => x) as [string, string][]
+                if (path) {
+                    const contents = await fs.readFile(path, 'utf-8');
 
-  const replacements: Replacement[] = []
-  const fullImports = extractImportNodes(ast.program)
+                    const types = (
+                        await extractTypesFromSource(contents, intersection, {
+                            relativePath: path,
+                            aliases,
+                        })
+                    ).reverse();
 
-  // Clean up imports
-  fullImports.forEach((i) => {
-    i.specifiers = i.specifiers.filter((specifier) => {
-      if (specifier.type === 'ImportSpecifier' && specifier.imported.type === 'Identifier')
-        return !resolvedTypes.some(x => x[0] === (specifier.imported as Identifier).name)
+                    return types;
+                }
 
-      return true
-    })
+                return null;
+            }),
+        )
+    )
+        .flat()
+        .filter((x): x is [string, string] => x !== null);
 
-    if (i.specifiers.length === 0) {
-      replacements.push({
-        start: i.start!,
-        end: i.end!,
-        replacement: '',
-      })
+    const replacements: Replacement[] = [];
+    const fullImports = extractImportNodes(program);
+
+    // Clean up imports
+    fullImports.forEach((i) => {
+        i.specifiers = i.specifiers.filter((specifier) => {
+            if (specifier.type === 'ImportSpecifier' && specifier.imported.type === 'Identifier') {
+                const name = specifier.imported.name;
+                return !resolvedTypes.some((x) => x[0] === name);
+            }
+
+            return true;
+        });
+
+        console.log(i.start, i.end);
+
+        if (!i.specifiers.length) {
+            replacements.push({
+                start: i.start!,
+                end: i.end!,
+                empty: true,
+            });
+        } else {
+            replacements.push({
+                start: i.start!,
+                end: i.end!,
+                empty: false,
+            });
+        }
+    });
+
+    if (resolvedTypes.length) {
+        const name = resolvedTypes[resolvedTypes.length - 1][0];
+        const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('');
+        const result = mergeInterfaceCode(interfaceCodes);
+        console.log(result);
+
+        if (result) resolvedTypes = [[name, `interface ${name} {${result}}`]];
     }
-    else {
-      replacements.push({
-        start: i.start!,
-        end: i.end!,
-        replacement: generate(i).code,
-      })
-    }
-  })
 
-  if (resolvedTypes.length) {
-    const name = resolvedTypes[resolvedTypes.length - 1][0]
-    const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('')
-    const result = mergeInterfaceCode(interfaceCodes)
+    const transformedScriptSetup = [
+        resolvedTypes.map((x) => x[1]).join('\n'),
+        replaceAtIndexes(scriptSetup.content, replacements),
+    ].join('\n');
 
-    if (result)
-      resolvedTypes = [[name, `interface ${name} {${result}}`]]
-  }
+    const transformedCode = [
+        code.slice(0, scriptSetup.loc.start.offset),
+        transformedScriptSetup,
+        code.slice(scriptSetup.loc.end.offset),
+    ].join('\n');
 
-  const transformedScriptSetup = [resolvedTypes.map(x => x[1]).join('\n'), replaceAtIndexes(scriptSetup.content, replacements)].join('\n')
-  const transformedCode = [
-    code.substring(0, scriptSetup.loc.start.offset),
-    transformedScriptSetup,
-    code.substring(scriptSetup.loc.end.offset),
-  ].join('\n')
-
-  return transformedCode
+    return transformedCode;
 }

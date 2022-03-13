@@ -1,7 +1,9 @@
-type Foo = [[number, number], [number, number]]
-type Bar = Foo
+type Foo = [[number, number]];
+type Bar = Foo;
 
-export interface Props {
-  foo: Foo
-  bar: Bar
+export interface Props<T> {
+    foo: Foo;
+    bar: Bar;
 }
+
+export interface Test {};

@@ -1,35 +1,32 @@
-import { Plugin, ResolvedConfig } from 'vite'
-import { transform } from './core'
+import { Plugin, ResolvedConfig } from 'vite';
+import { transform } from './core';
 
 interface Store {
-  config: ResolvedConfig | null
-}
-
-const store: Store = {
-  config: null,
+    config: ResolvedConfig | null;
 }
 
 export default function VitePluginVueTypeImports(): Plugin {
-  return {
-    name: 'vite-plugin-vue-type-imports',
-    enforce: 'pre',
-    async configResolved(config) {
-      store.config = config
-    },
-    async transform(code, id) {
-      if (!/\.(vue)$/.test(id))
-        return
+    const store: Store = {
+        config: null,
+    };
 
-      const root = store.config?.root
-      const aliases = store.config?.resolve.alias
+    return {
+        name: 'vite-plugin-vue-type-imports',
+        enforce: 'pre',
+        async configResolved(config) {
+            store.config = config;
+        },
+        async transform(code, id) {
+            if (!/\.(vue)$/.test(id)) return;
 
-      return {
-        code: await transform(code, {
-          id,
-          root,
-          aliases,
-        }),
-      }
-    },
-  }
+            const aliases = store.config?.resolve.alias;
+
+            return {
+                code: await transform(code, {
+                    id,
+                    aliases,
+                }),
+            };
+        },
+    };
 }
