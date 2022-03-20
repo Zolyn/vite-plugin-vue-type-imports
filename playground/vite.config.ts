@@ -1,11 +1,11 @@
-import path from 'path';
 import Vue from '@vitejs/plugin-vue';
+import VueTypeImports from '@zolyn/vite-plugin-vue-type-imports';
+import path from 'path';
 import { presetAttributify, presetIcons, presetUno } from 'unocss';
 import Unocss from 'unocss/vite';
 import AutoImport from 'unplugin-auto-import/vite';
 import Components from 'unplugin-vue-components/vite';
 import { defineConfig } from 'vite';
-import VueTypeImports from '@zolyn/vite-plugin-vue-type-imports';
 import Inspect from 'vite-plugin-inspect';
 
 export default defineConfig({

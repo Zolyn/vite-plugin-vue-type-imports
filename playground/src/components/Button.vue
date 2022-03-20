@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { Props } from '~/typings';
-import { resolveComponent } from 'vue';
-import { Test } from '~/typings';
+import { ButtonProps } from '~/button-types';
 
-const props = defineProps<Props<Test>>();
+const props = defineProps<ButtonProps>();
 </script>
 
 <template>
     <button py-2 px-4 font-medium rounded m-8>
-        {{ props.bar }}
+        {{ props.color }}
         <slot />
     </button>
 </template>
