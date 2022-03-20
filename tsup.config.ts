@@ -1,11 +1,18 @@
-import { Options } from 'tsup';
+import { defineConfig } from 'tsup';
 
-const config: Options = {
+const isProduction = process.env.NODE_ENV === 'production';
+
+export default defineConfig({
+    minify: true,
     format: ['esm', 'cjs'],
     entry: ['./src/index.ts', './src/nuxt.ts'],
     target: 'node14',
     clean: true,
-    external: ['fast-glob', '@babel/types', '@babel/generator'],
-};
-
-export default config;
+    external: ['fast-glob', '@babel/types'],
+    dts: isProduction,
+    esbuildOptions(options) {
+        if (isProduction) {
+            options.pure = ['console.log'];
+        }
+    },
+});
