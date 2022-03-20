@@ -1,5 +1,5 @@
 import { babelParse, parse } from '@vue/compiler-sfc';
-import fs from 'fs/promises';
+import fs from 'fs';
 import { Alias, AliasOptions } from 'vite';
 import {
     extractImportNodes,
@@ -7,7 +7,15 @@ import {
     getAvailableImportsFromAst,
     getUsedInterfacesFromAst
 } from './ast';
-import { groupImports, intersect, mergeInterfaceCode, replaceAtIndexes, Replacement, resolveModulePath } from './utils';
+import {
+    groupImports,
+    intersect,
+    mergeInterfaceCode,
+    removeAdditionalEscapeChar,
+    replaceAtIndexes,
+    Replacement,
+    resolveModulePath
+} from './utils';
 
 export interface TransformOptions {
     id: string;
@@ -15,9 +23,12 @@ export interface TransformOptions {
 }
 
 export async function transform(code: string, { id, aliases }: TransformOptions) {
+    // console.time('vue_parse');
     const {
         descriptor: { scriptSetup },
     } = parse(code);
+
+    // console.timeEnd('vue_parse');
 
     if (scriptSetup?.lang !== 'ts' || !scriptSetup.content) return code;
 
@@ -25,11 +36,9 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         sourceType: 'module',
         plugins: ['typescript', 'topLevelAwait'],
     });
+
     const imports = getAvailableImportsFromAst(program);
     const interfaces = getUsedInterfacesFromAst(program);
-
-    // console.log(interfaces);
-    // console.log(groupImports(imports));
 
     /**
      * For every interface used in defineProps or defineEmits, we need to match
@@ -40,14 +49,21 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         await Promise.all(
             Object.entries(groupImports(imports)).map(async ([unresolvedPath, importedFields]) => {
                 const intersection = intersect(importedFields, interfaces);
+                // console.log('Intersect:', intersection);
 
-                const path = await resolveModulePath(unresolvedPath, id, aliases);
+                let path: string | null = null;
+
+                if (intersection.length) {
+                    path = await resolveModulePath(unresolvedPath, id, aliases);
+                }
 
                 if (path) {
-                    const contents = await fs.readFile(path, 'utf-8');
+                    // NOTE: Slow when use fsPromises.readFile(), tested on Arch Linux x64 (Kernel 5.16.11)
+                    // Wondering what make it slow. Temporarily, use fs.readFileSync() instead.
+                    const content = fs.readFileSync(path, 'utf-8');
 
                     const types = (
-                        await extractTypesFromSource(contents, intersection, {
+                        await extractTypesFromSource(content, intersection, {
                             relativePath: path,
                             aliases,
                         })
@@ -55,7 +71,6 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
 
                     return types;
                 }
-
                 return null;
             }),
         )
@@ -77,8 +92,6 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
             return true;
         });
 
-        console.log(i.start, i.end);
-
         if (!i.specifiers.length) {
             replacements.push({
                 start: i.start!,
@@ -94,25 +107,29 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         }
     });
 
+    console.log(resolvedTypes);
+
     if (resolvedTypes.length) {
         const name = resolvedTypes[resolvedTypes.length - 1][0];
         const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('');
         const result = mergeInterfaceCode(interfaceCodes);
-        console.log(result);
 
         if (result) resolvedTypes = [[name, `interface ${name} {${result}}`]];
     }
 
-    const transformedScriptSetup = [
-        resolvedTypes.map((x) => x[1]).join('\n'),
-        replaceAtIndexes(scriptSetup.content, replacements),
-    ].join('\n');
+    // console.log(resolvedTypes);
+
+    const inlinedTypes = resolvedTypes.map((x) => x[1]).join('\n');
 
     const transformedCode = [
+        // Tag head
         code.slice(0, scriptSetup.loc.start.offset),
-        transformedScriptSetup,
+        // Script setup content
+        inlinedTypes,
+        replaceAtIndexes(scriptSetup.content, replacements),
+        // Tag end
         code.slice(scriptSetup.loc.end.offset),
     ].join('\n');
 
-    return transformedCode;
+    return removeAdditionalEscapeChar(transformedCode);
 }

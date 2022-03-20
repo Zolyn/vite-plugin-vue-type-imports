@@ -7,29 +7,21 @@ import {
     StringLiteral,
     TSEnumDeclaration,
     TSInterfaceDeclaration,
-    TSModuleDeclaration,
-    TSNamespaceExportDeclaration,
     TSTypeAliasDeclaration,
     TSTypeLiteral,
     TSTypeParameterInstantiation,
     TSTypeReference,
-    TSUnionType,
+    TSUnionType
 } from '@babel/types';
 import { babelParse } from '@vue/compiler-sfc';
-import fs from 'fs/promises';
+import fs from 'fs';
 import { Alias, AliasOptions } from 'vite';
 import { groupImports, intersect, resolveModulePath } from './utils';
 
 const DEFINE_PROPS = 'defineProps';
 const DEFINE_EMITS = 'defineEmits';
 const WITH_DEFAULTS = 'withDefaults';
-const TS_TYPES_KEYS = [
-    'TSTypeAliasDeclaration',
-    'TSNamespaceExportDeclaration',
-    'TSModuleDeclaration',
-    'TSInterfaceDeclaration',
-    'TSEnumDeclaration',
-];
+const TS_TYPES_KEYS = ['TSTypeAliasDeclaration', 'TSInterfaceDeclaration', 'TSEnumDeclaration'];
 
 const isDefineProps = (node: Node): node is CallExpression => isCallOf(node, DEFINE_PROPS);
 const isDefineEmits = (node: Node): node is CallExpression => isCallOf(node, DEFINE_EMITS);
@@ -51,12 +43,9 @@ export type TypeInfo = Partial<Record<'type' | 'name', string>>;
 
 export type GetTypesResult = (string | TypeInfo)[];
 
-export type TSTypes =
-    | TSTypeAliasDeclaration
-    | TSNamespaceExportDeclaration
-    | TSModuleDeclaration
-    | TSInterfaceDeclaration
-    | TSEnumDeclaration;
+export type TSTypes = TSTypeAliasDeclaration | TSInterfaceDeclaration | TSEnumDeclaration;
+
+type NodeMap = Map<string, TSTypes>;
 
 export function extractImportNodes(ast: Program) {
     return ast.body.filter((node): node is ImportDeclaration => node.type === 'ImportDeclaration');
@@ -123,10 +112,10 @@ export function getUsedInterfacesFromAst(ast: Program) {
         if (node.type === 'CallExpression' && node.typeParameters?.type === 'TSTypeParameterInstantiation') {
             const propsTypeDefinition = node.typeParameters.params[0];
 
-            if (propsTypeDefinition.type === 'TSTypeReference') {
-                if (propsTypeDefinition.typeName.type === 'Identifier')
-                    interfaces.push(propsTypeDefinition.typeName.name);
+            if (propsTypeDefinition.type === 'TSTypeReference' && propsTypeDefinition.typeName.type === 'Identifier') {
+                interfaces.push(propsTypeDefinition.typeName.name);
 
+                // TODO: Support nested type params
                 if (propsTypeDefinition.typeParameters)
                     interfaces.push(...getTypesFromTypeParameters(propsTypeDefinition.typeParameters));
             }
@@ -196,9 +185,11 @@ function getTSTypeLiteralTypes(x: TSTypeLiteral) {
 function extractAllTypescriptTypesFromAST(ast: Program) {
     return ast.body
         .map((node) => {
+            // e.g. 'export interface | type | ...'
             if (node.type === 'ExportNamedDeclaration' && node.declaration && isTSTypes(node.declaration))
                 return node.declaration;
 
+            // e.g. 'interface | type | ...'
             if (isTSTypes(node)) return node;
 
             return null;
@@ -222,19 +213,69 @@ export async function extractTypesFromSource(
     const extractedTypes: [string, string][] = [];
     const missingTypes: string[] = [];
     const ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program;
-    // TODO: understand why we need to get imports
+    // Get external types
     const imports = [...getAvailableImportsFromAst(ast), ...getAvailableExportsFromAst(ast)];
     const typescriptNodes = extractAllTypescriptTypesFromAST(ast);
+    const nodeMap = getTSNodeMap();
+    // console.log(nodeMap);
 
     const extractFromPosition = (start: number | null, end: number | null) =>
-        start && end ? source.substring(start, end) : '';
+        isNumber(start) && isNumber(end) ? source.slice(start, end) : '';
+
+    function getTSNodeMap(): NodeMap {
+        const nodeMap = new Map<string, TSTypes>();
+
+        for (const node of typescriptNodes) {
+            if ('name' in node.id) {
+                nodeMap.set(node.id.name, node);
+            }
+        }
+
+        return nodeMap;
+    }
+
+    function _ExtractTypeByName(node: TSTypes) {
+        switch (node.type) {
+            // Types e.g. export Type Color = 'red' | 'blue'
+            case 'TSTypeAliasDeclaration': {
+                extractTypesFromTypeAlias(node);
+                break;
+            }
+            // Interfaces e.g. export interface MyInterface {}
+            case 'TSInterfaceDeclaration': {
+                extractTypesFromInterface(node);
+                break;
+            }
+            // Enums e.g. export enum UserType {}
+            case 'TSEnumDeclaration': {
+                extractTypesFromEnum(node);
+                break;
+            }
+        }
+    };
+
+    /**
+     * Extract ts types by name.
+     */
+    const extractTypeByName = (name: string) => {
+        const node = nodeMap.get(name);
+        if (node) {
+            _ExtractTypeByName(node);
+        } else {
+            missingTypes.push(name);
+            console.log('Missing types:', missingTypes);
+        }
+    };
 
     // Recursively calls this function to find types from other modules.
     const extractTypesFromModule = async (modulePath: string, types: string[]) => {
         const path = await resolveModulePath(modulePath, relativePath, aliases);
         if (!path) return [];
 
-        const contents = await fs.readFile(path, 'utf-8');
+        // NOTE: Slow when use fsPromises.readFile(), tested on Arch Linux x64 (Kernel 5.16.11)
+        // Wondering what make it slow. Temporarily, use fs.readFileSync() instead.
+        const contents = fs.readFileSync(path, 'utf-8');
+
         return extractTypesFromSource(contents, types, { relativePath: path, aliases });
     };
 
@@ -246,25 +287,6 @@ export async function extractTypesFromSource(
                     extractTypeByName(typeReference.typeName.name);
                 }
             });
-    };
-
-    /**
-     * Extract ts types by name.
-     */
-    const extractTypeByName = async (name: string) => {
-        for (const node of typescriptNodes) {
-            if ('name' in node.id && node.id.name === name) {
-                if (node.type === 'TSTypeAliasDeclaration') {
-                    return extractTypesFromTypeAlias(node);
-                } else if (node.type === 'TSInterfaceDeclaration') {
-                    return extractTypesFromInterface(node);
-                } else if (node.type === 'TSEnumDeclaration') {
-                    return extractTypesFromEnum(node);
-                }
-            }
-        }
-
-        missingTypes.push(name);
     };
 
     /**
@@ -313,29 +335,25 @@ export async function extractTypesFromSource(
         extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);
     };
 
-    for (const node of typescriptNodes) {
-        for (const typeName of types) {
-            // Interfaces e.g. export interface MyInterface {}
-            if (node.type === 'TSInterfaceDeclaration' && node.id.name === typeName) extractTypesFromInterface(node);
-            // Types e.g. export Type Color = 'red' | 'blue'
-            else if (node.type === 'TSTypeAliasDeclaration' && node.id.name === typeName)
-                extractTypesFromTypeAlias(node);
-            // Enums e.g. export enum UserType {}
-            else if (node.type === 'TSEnumDeclaration' && node.id.name === typeName) extractTypesFromEnum(node);
-            else missingTypes.push(typeName);
-        }
+    for (const typeName of types) {
+        extractTypeByName(typeName);
     }
 
     await Promise.all(
         Object.entries(groupImports(imports)).map(async ([modulePath, importedFields]) => {
             const intersection = intersect(importedFields, missingTypes);
 
-            if (intersection.length > 0)
+            if (intersection.length) {
                 extractedTypes.push(...(await extractTypesFromModule(modulePath, intersection)));
+            }
         }),
     );
 
     return extractedTypes;
+}
+
+function isNumber(n: any): n is number {
+    return typeof n === 'number';
 }
 
 export function isCallOf(node: MaybeNode, test: string | ((id: string) => boolean)): node is CallExpression {
