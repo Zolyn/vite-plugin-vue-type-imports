@@ -252,12 +252,12 @@ export async function extractTypesFromSource(
                 break;
             }
         }
-    };
+    }
 
     /**
      * Extract ts types by name.
      */
-    const extractTypeByName = (name: string) => {
+    function extractTypeByName(name: string, extendInterfaceIndex: number) {
         const node = nodeMap.get(name);
         if (node) {
             _ExtractTypeByName(node);
@@ -265,7 +265,7 @@ export async function extractTypesFromSource(
             missingTypes.push(name);
             console.log('Missing types:', missingTypes);
         }
-    };
+    }
 
     // Recursively calls this function to find types from other modules.
     const extractTypesFromModule = async (modulePath: string, types: string[]) => {
@@ -293,10 +293,15 @@ export async function extractTypesFromSource(
      * Extract ts type interfaces. Should also check top-level properties
      * in the interface to look for types to extract
      */
-    const extractTypesFromInterface = (node: TSInterfaceDeclaration) => {
-        extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);
+    const extractTypesFromInterface = (node: TSInterfaceDeclaration, extendInterfaceIndex: number) => {
+        const extractedTypesLength = extractedTypes.push([
+            node.id.name,
+            extractFromPosition(node.body.start! + 1, node.body.end! - 1),
+        ]);
 
         if (node.extends) {
+            const interfaceIndex = extractedTypesLength - 1;
+
             for (const extend of node.extends) {
                 if (extend.expression.type === 'Identifier') extractTypeByName(extend.expression.name);
             }
@@ -310,6 +315,7 @@ export async function extractTypesFromSource(
                     prop.typeAnnotation?.typeAnnotation.type === 'TSTypeReference' &&
                     prop.typeAnnotation.typeAnnotation.typeName.type === 'Identifier'
                 )
+                    // TODO: Need to filter, since Vue only transform the type of nested objects to 'Object'
                     extractTypeByName(prop.typeAnnotation.typeAnnotation.typeName.name);
             }
         }
@@ -318,7 +324,7 @@ export async function extractTypesFromSource(
     /**
      * Extract types from TSTypeAlias
      */
-    const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration) => {
+    const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration, extendInterfaceIndex?: number) => {
         extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);
 
         if (node.typeAnnotation.type === 'TSUnionType') extractTypesFromTSUnionType(node.typeAnnotation);
@@ -330,6 +336,8 @@ export async function extractTypesFromSource(
     /**
      * Extract enum types. Since I don't believe these can depend on any other
      * types we just want to extract the string itself.
+     *
+     * Zorin: Since Vue can't handle Enum types right now, would it be better to remove it?
      */
     const extractTypesFromEnum = (node: TSEnumDeclaration) => {
         extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);

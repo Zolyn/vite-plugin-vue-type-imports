@@ -52,7 +52,7 @@ export function resolvePath(path: string, from: string, aliases: ((AliasOptions 
     }
 
     // Result is a typescript file. e.g. 'vue/macros-global.d.ts'
-    if (extname(resolved_path) === 'ts') {
+    if (extname(resolved_path) === '.ts') {
         return resolved_path;
     }
     // Not a typescript file, find declaration file

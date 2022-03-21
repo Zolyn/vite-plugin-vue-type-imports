@@ -109,15 +109,15 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
 
     console.log(resolvedTypes);
 
-    if (resolvedTypes.length) {
-        const name = resolvedTypes[resolvedTypes.length - 1][0];
-        const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('');
-        const result = mergeInterfaceCode(interfaceCodes);
+    // if (resolvedTypes.length) {
+    //     const name = resolvedTypes[resolvedTypes.length - 1][0];
+    //     const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('');
+    //     const result = mergeInterfaceCode(interfaceCodes);
 
-        if (result) resolvedTypes = [[name, `interface ${name} {${result}}`]];
-    }
+    //     if (result) resolvedTypes = [[name, `interface ${name} {${result}}`]];
+    // }
 
-    // console.log(resolvedTypes);
+    console.log(resolvedTypes);
 
     const inlinedTypes = resolvedTypes.map((x) => x[1]).join('\n');
 
