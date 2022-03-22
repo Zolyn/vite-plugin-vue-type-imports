@@ -71,6 +71,7 @@ defineProps<User>()
 - At this stage, the plugin only scans the imported interfaces and does not process the interfaces defined in the SFC
 - Interface which extends Literal Type or Intersection Type is not supported.
 - Types imported from external packages are not fully supported right now.
+- The plugin may be slow because it needs to traverse the AST (using @babel/parser).
 
 ## License
 
