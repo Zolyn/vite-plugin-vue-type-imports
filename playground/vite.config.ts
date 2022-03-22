@@ -16,7 +16,7 @@ export default defineConfig({
     },
     plugins: [
         Vue(),
-        // VueTypeImports(),
+        VueTypeImports(),
         Unocss({
             presets: [presetUno(), presetIcons(), presetAttributify()],
         }),

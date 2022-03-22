@@ -1,16 +1,18 @@
 <script setup lang="ts">
-// import { ButtonProps } from '~/button-types';
+import { ButtonProps } from '~/button-types';
 
-interface Size {
-    small: 'sm';
-    medium: 'md';
-    large: 'lg';
-}
+// type A = string;
 
-interface ButtonProps {
-    color: string;
-    size: Size;
-}
+// interface Size {
+//     small: 'sm';
+//     medium: 'md';
+//     large: 'lg';
+// }
+
+// interface ButtonProps {
+//     color: string;
+//     size: number | Size | A;
+// }
 
 const props = defineProps<ButtonProps>();
 </script>
