@@ -1,34 +1,19 @@
 import { babelParse, parse } from '@vue/compiler-sfc';
 import fs from 'fs';
 import { Alias, AliasOptions } from 'vite';
-import {
-    extractImportNodes,
-    extractTypesFromSource,
-    getAvailableImportsFromAst,
-    getUsedInterfacesFromAst
-} from './ast';
-import {
-    groupImports,
-    intersect,
-    mergeInterfaceCode,
-    removeAdditionalEscapeChar,
-    replaceAtIndexes,
-    Replacement,
-    resolveModulePath
-} from './utils';
+import { extractTypesFromSource, getAvailableImportsFromAst, getUsedInterfacesFromAst } from './ast';
+import { groupImports, intersect, replaceAtIndexes, Replacement, resolveModulePath } from './utils';
 
 export interface TransformOptions {
     id: string;
     aliases: ((AliasOptions | undefined) & Alias[]) | undefined;
+    clean: boolean;
 }
 
-export async function transform(code: string, { id, aliases }: TransformOptions) {
-    // console.time('vue_parse');
+export async function transform(code: string, { id, aliases, clean }: TransformOptions) {
     const {
         descriptor: { scriptSetup },
     } = parse(code);
-
-    // console.timeEnd('vue_parse');
 
     if (scriptSetup?.lang !== 'ts' || !scriptSetup.content) return code;
 
@@ -37,8 +22,13 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         plugins: ['typescript', 'topLevelAwait'],
     });
 
-    const imports = getAvailableImportsFromAst(program);
+    const { imports, importNodes } = getAvailableImportsFromAst(program);
     const interfaces = getUsedInterfacesFromAst(program);
+
+    // Skip
+    if (!interfaces.length) {
+        return code;
+    }
 
     /**
      * For every interface used in defineProps or defineEmits, we need to match
@@ -71,6 +61,7 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
 
                     return types;
                 }
+
                 return null;
             }),
         )
@@ -79,10 +70,9 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         .filter((x): x is [string, string] => x !== null);
 
     const replacements: Replacement[] = [];
-    const fullImports = extractImportNodes(program);
 
     // Clean up imports
-    fullImports.forEach((i) => {
+    importNodes.forEach((i) => {
         i.specifiers = i.specifiers.filter((specifier) => {
             if (specifier.type === 'ImportSpecifier' && specifier.imported.type === 'Identifier') {
                 const name = specifier.imported.name;
@@ -107,18 +97,6 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         }
     });
 
-    console.log(resolvedTypes);
-
-    // if (resolvedTypes.length) {
-    //     const name = resolvedTypes[resolvedTypes.length - 1][0];
-    //     const interfaceCodes = resolvedTypes.map(([_, interfaceCode]) => interfaceCode).join('');
-    //     const result = mergeInterfaceCode(interfaceCodes);
-
-    //     if (result) resolvedTypes = [[name, `interface ${name} {${result}}`]];
-    // }
-
-    console.log(resolvedTypes);
-
     const inlinedTypes = resolvedTypes.map((x) => x[1]).join('\n');
 
     const transformedCode = [
@@ -126,10 +104,10 @@ export async function transform(code: string, { id, aliases }: TransformOptions)
         code.slice(0, scriptSetup.loc.start.offset),
         // Script setup content
         inlinedTypes,
-        replaceAtIndexes(scriptSetup.content, replacements),
+        replaceAtIndexes(scriptSetup.content, replacements, clean),
         // Tag end
         code.slice(scriptSetup.loc.end.offset),
     ].join('\n');
 
-    return removeAdditionalEscapeChar(transformedCode);
+    return transformedCode;
 }

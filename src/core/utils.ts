@@ -23,7 +23,7 @@ export function matches(pattern: string | RegExp, importee: string) {
 }
 
 // https://github.com/antfu/local-pkg/blob/main/index.mjs
-function searchPackageJSON(dir: string): string | undefined {
+export function searchPackageJSON(dir: string): string | undefined {
     let packageJsonPath;
     while (true) {
         if (!dir) return;
@@ -124,9 +124,8 @@ export interface Replacement {
 
 /**
  * Replace all items at specified indexes while keeping indexes relative during replacements.
- * TODO: Still needs to be improved
  */
-export function replaceAtIndexes(source: string, replacements: Replacement[]): string {
+export function replaceAtIndexes(source: string, replacements: Replacement[], clean: boolean): string {
     let result = source;
     let offset = 0;
 
@@ -138,37 +137,31 @@ export function replaceAtIndexes(source: string, replacements: Replacement[]): s
         }
     }
 
-    return result;
-}
-
-export function getInterfaceCode(source: string): string | false {
-    const clip = source.split('{');
-    if (clip.length !== 2) return false;
-
-    return clip[1].split('}')[0];
-}
-
-export function mergeInterfaceCode(source: string): string | false {
-    let result: string | boolean = '';
-    const clip = source.split('extends');
-
-    for (const snippet of clip) {
-        const code = getInterfaceCode(snippet);
-        if (code) {
-            result += code;
-        } else {
-            result = false;
-            break;
-        }
+    // remove empty newline -> ''
+    if (clean) {
+        result = result
+            .split('\n')
+            .filter((val) => val)
+            .join('\n');
     }
 
     return result;
 }
 
-/**
- * Remove '\n' in the end of file
- * TODO: Still needs to be improved
- */
-export function removeAdditionalEscapeChar(source: string): string {
-    return source.slice(0, source.length - 1);
+export class CodeCache {
+    private container: Map<string, string>;
+
+    public constructor() {
+        this.container = new Map();
+    }
+
+    public get(id: string) {
+        return this.container.get(id);
+    }
+
+    public set(id: string, value: string) {
+        this.container.set(id, value);
+
+        return value;
+    }
 }

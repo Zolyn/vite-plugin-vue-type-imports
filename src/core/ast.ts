@@ -6,12 +6,13 @@ import {
     Program,
     StringLiteral,
     TSEnumDeclaration,
+    TSExpressionWithTypeArguments,
     TSInterfaceDeclaration,
     TSTypeAliasDeclaration,
     TSTypeLiteral,
     TSTypeParameterInstantiation,
     TSTypeReference,
-    TSUnionType
+    TSUnionType,
 } from '@babel/types';
 import { babelParse } from '@vue/compiler-sfc';
 import fs from 'fs';
@@ -35,6 +36,11 @@ export interface IImport {
     path: string;
 }
 
+export interface ExtractMetaData {
+    extendInterfaceIndex?: number;
+    isProperty?: boolean;
+}
+
 export type MaybeNode = Node | null | undefined;
 
 export type ExportNamedFromDeclaration = ExportNamedDeclaration & { source: StringLiteral };
@@ -43,16 +49,18 @@ export type TypeInfo = Partial<Record<'type' | 'name', string>>;
 
 export type GetTypesResult = (string | TypeInfo)[];
 
-export type TSTypes = TSTypeAliasDeclaration | TSInterfaceDeclaration | TSEnumDeclaration;
-
-type NodeMap = Map<string, TSTypes>;
-
-export function extractImportNodes(ast: Program) {
-    return ast.body.filter((node): node is ImportDeclaration => node.type === 'ImportDeclaration');
+export interface GetImportsResult {
+    imports: IImport[];
+    importNodes: ImportDeclaration[];
 }
 
-export function getAvailableImportsFromAst(ast: Program) {
+export type TSTypes = TSTypeAliasDeclaration | TSInterfaceDeclaration | TSEnumDeclaration;
+
+export type NodeMap = Map<string, TSTypes>;
+
+export function getAvailableImportsFromAst(ast: Program): GetImportsResult {
     const imports: IImport[] = [];
+    const importNodes: ImportDeclaration[] = [];
 
     const addImport = (node: ImportDeclaration) => {
         for (const specifier of node.specifiers) {
@@ -66,13 +74,15 @@ export function getAvailableImportsFromAst(ast: Program) {
                 });
             }
         }
+
+        importNodes.push(node);
     };
 
     for (const node of ast.body) {
         if (node.type === 'ImportDeclaration') addImport(node);
     }
 
-    return imports;
+    return { imports, importNodes };
 }
 
 /**
@@ -200,6 +210,8 @@ function extractAllTypescriptTypesFromAST(ast: Program) {
 interface ExtractTypesFromSourceOptions {
     relativePath: string;
     aliases: ((AliasOptions | undefined) & Alias[]) | undefined;
+    extracted?: [string, string][];
+    map?: Map<string, number>;
 }
 
 /**
@@ -208,13 +220,15 @@ interface ExtractTypesFromSourceOptions {
 export async function extractTypesFromSource(
     source: string,
     types: string[],
-    { relativePath, aliases }: ExtractTypesFromSourceOptions,
+    { relativePath, aliases, extracted, map }: ExtractTypesFromSourceOptions,
 ) {
-    const extractedTypes: [string, string][] = [];
+    const extractedTypes: [string, string][] = extracted ?? [];
     const missingTypes: string[] = [];
+    const extendsMap = map ?? new Map<string, number>();
     const ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program;
+
     // Get external types
-    const imports = [...getAvailableImportsFromAst(ast), ...getAvailableExportsFromAst(ast)];
+    const imports = [...getAvailableImportsFromAst(ast).imports, ...getAvailableExportsFromAst(ast)];
     const typescriptNodes = extractAllTypescriptTypesFromAST(ast);
     const nodeMap = getTSNodeMap();
     // console.log(nodeMap);
@@ -234,16 +248,16 @@ export async function extractTypesFromSource(
         return nodeMap;
     }
 
-    function _ExtractTypeByName(node: TSTypes) {
+    function _ExtractTypeByName(node: TSTypes, metadata: ExtractMetaData) {
         switch (node.type) {
             // Types e.g. export Type Color = 'red' | 'blue'
             case 'TSTypeAliasDeclaration': {
-                extractTypesFromTypeAlias(node);
+                extractTypesFromTypeAlias(node, metadata);
                 break;
             }
             // Interfaces e.g. export interface MyInterface {}
             case 'TSInterfaceDeclaration': {
-                extractTypesFromInterface(node);
+                extractTypesFromInterface(node, metadata);
                 break;
             }
             // Enums e.g. export enum UserType {}
@@ -257,13 +271,21 @@ export async function extractTypesFromSource(
     /**
      * Extract ts types by name.
      */
-    function extractTypeByName(name: string, extendInterfaceIndex: number) {
+    function extractTypeByName(name: string, metadata: ExtractMetaData = {}) {
+        let { extendInterfaceIndex, isProperty } = metadata;
+
+        extendInterfaceIndex ??= extendsMap.get(name);
+
         const node = nodeMap.get(name);
         if (node) {
-            _ExtractTypeByName(node);
+            _ExtractTypeByName(node, { extendInterfaceIndex, isProperty });
         } else {
+            if (isNumber(extendInterfaceIndex)) {
+                extendsMap.set(name, extendInterfaceIndex);
+            }
+
             missingTypes.push(name);
-            console.log('Missing types:', missingTypes);
+            // console.log('Missing types:', missingTypes);
         }
     }
 
@@ -276,7 +298,12 @@ export async function extractTypesFromSource(
         // Wondering what make it slow. Temporarily, use fs.readFileSync() instead.
         const contents = fs.readFileSync(path, 'utf-8');
 
-        return extractTypesFromSource(contents, types, { relativePath: path, aliases });
+        return extractTypesFromSource(contents, types, {
+            relativePath: path,
+            aliases,
+            extracted: extractedTypes,
+            map: extendsMap,
+        });
     };
 
     const extractTypesFromTSUnionType = async (union: TSUnionType) => {
@@ -289,34 +316,71 @@ export async function extractTypesFromSource(
             });
     };
 
+    function extractExtendInterfaces(interfaces: TSExpressionWithTypeArguments[], extendInterfaceIndex: number) {
+        for (const extend of interfaces) {
+            if (extend.expression.type === 'Identifier') {
+                extractTypeByName(extend.expression.name, { extendInterfaceIndex });
+            }
+        }
+    }
+
     /**
      * Extract ts type interfaces. Should also check top-level properties
      * in the interface to look for types to extract
      */
-    const extractTypesFromInterface = (node: TSInterfaceDeclaration, extendInterfaceIndex: number) => {
-        const extractedTypesLength = extractedTypes.push([
-            node.id.name,
-            extractFromPosition(node.body.start! + 1, node.body.end! - 1),
-        ]);
+    const extractTypesFromInterface = (node: TSInterfaceDeclaration, metadata: ExtractMetaData) => {
+        const { extendInterfaceIndex, isProperty } = metadata;
 
-        if (node.extends) {
-            const interfaceIndex = extractedTypesLength - 1;
+        const interfaceName = node.id.name;
+        const extendsInterfaces = node.extends;
 
-            for (const extend of node.extends) {
-                if (extend.expression.type === 'Identifier') extractTypeByName(extend.expression.name);
+        // Skip all process, since Vue only transform the type of nested objects to 'Object'
+        if (isProperty) {
+            extractedTypes.push([interfaceName, `interface ${interfaceName} {}`]);
+            return;
+        }
+
+        let bodyStart = node.body.start!;
+        let bodyEnd = node.body.end!;
+
+        if (isNumber(extendInterfaceIndex)) {
+            bodyStart += 1;
+
+            if (extendsInterfaces) {
+                bodyEnd -= 1;
+
+                extractedTypes[extendInterfaceIndex][1] += extractFromPosition(bodyStart, bodyEnd);
+                extractExtendInterfaces(extendsInterfaces, extendInterfaceIndex);
+            } else {
+                extractedTypes[extendInterfaceIndex][1] += extractFromPosition(bodyStart, bodyEnd);
             }
+        } else if (extendsInterfaces) {
+            bodyEnd -= 1;
+
+            const interfaceIndex =
+                extractedTypes.push([
+                    interfaceName,
+                    `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`,
+                ]) - 1;
+
+            extractExtendInterfaces(extendsInterfaces, interfaceIndex);
+        } else {
+            extractedTypes.push([
+                interfaceName,
+                `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`,
+            ]);
         }
 
         for (const prop of node.body.body) {
             if (prop.type === 'TSPropertySignature') {
                 if (prop.typeAnnotation?.typeAnnotation.type === 'TSUnionType')
+                    // TODO: Should this be filtered?
                     extractTypesFromTSUnionType(prop.typeAnnotation.typeAnnotation);
                 else if (
                     prop.typeAnnotation?.typeAnnotation.type === 'TSTypeReference' &&
                     prop.typeAnnotation.typeAnnotation.typeName.type === 'Identifier'
                 )
-                    // TODO: Need to filter, since Vue only transform the type of nested objects to 'Object'
-                    extractTypeByName(prop.typeAnnotation.typeAnnotation.typeName.name);
+                    extractTypeByName(prop.typeAnnotation.typeAnnotation.typeName.name, { isProperty: true });
             }
         }
     };
@@ -324,11 +388,12 @@ export async function extractTypesFromSource(
     /**
      * Extract types from TSTypeAlias
      */
-    const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration, extendInterfaceIndex?: number) => {
+    const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration, metadata: ExtractMetaData) => {
         extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);
 
         if (node.typeAnnotation.type === 'TSUnionType') extractTypesFromTSUnionType(node.typeAnnotation);
 
+        // TODO: Support TSLiteral, IntersectionType
         if (node.typeAnnotation.type === 'TSTypeReference' && node.typeAnnotation.typeName.type === 'Identifier')
             extractTypeByName(node.typeAnnotation.typeName.name);
     };
@@ -337,10 +402,11 @@ export async function extractTypesFromSource(
      * Extract enum types. Since I don't believe these can depend on any other
      * types we just want to extract the string itself.
      *
-     * Zorin: Since Vue can't handle Enum types right now, would it be better to remove it?
+     * Zorin: Since Vue can't handle Enum types right now, would it be better to convert it to 'type [name] = number | string;'?
      */
     const extractTypesFromEnum = (node: TSEnumDeclaration) => {
-        extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);
+        const enumName = node.id.name;
+        extractedTypes.push([enumName, `type ${enumName} = number | string;`]);
     };
 
     for (const typeName of types) {
@@ -352,7 +418,7 @@ export async function extractTypesFromSource(
             const intersection = intersect(importedFields, missingTypes);
 
             if (intersection.length) {
-                extractedTypes.push(...(await extractTypesFromModule(modulePath, intersection)));
+                await extractTypesFromModule(modulePath, intersection);
             }
         }),
     );
@@ -360,7 +426,7 @@ export async function extractTypesFromSource(
     return extractedTypes;
 }
 
-function isNumber(n: any): n is number {
+export function isNumber(n: unknown): n is number {
     return typeof n === 'number';
 }
 
