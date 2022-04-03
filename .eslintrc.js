@@ -3,6 +3,7 @@ module.exports = {
     extends: ['alloy-patched', 'plugin:prettier/recommended'],
     env: {
         jest: true,
+        'vue/setup-compiler-macros': true,
     },
     plugins: ['jest'],
     globals: {},

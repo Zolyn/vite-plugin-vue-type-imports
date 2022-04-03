@@ -8,7 +8,7 @@ export default defineConfig({
     entry: ['./src/index.ts', './src/nuxt.ts'],
     target: 'node14',
     clean: true,
-    external: ['fast-glob', '@babel/types'],
+    external: ['fast-glob', '@babel/types', 'local-pkg'],
     dts: isProduction,
     esbuildOptions(options) {
         if (isProduction) {
