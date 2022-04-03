@@ -12,12 +12,12 @@ import {
     TSTypeLiteral,
     TSTypeParameterInstantiation,
     TSTypeReference,
-    TSUnionType,
+    TSUnionType
 } from '@babel/types';
 import { babelParse } from '@vue/compiler-sfc';
 import fs from 'fs';
 import { Alias, AliasOptions } from 'vite';
-import { groupImports, intersect, resolveModulePath } from './utils';
+import { groupImports, insertString, intersect, resolveModulePath } from './utils';
 
 const DEFINE_PROPS = 'defineProps';
 const DEFINE_EMITS = 'defineEmits';
@@ -36,8 +36,13 @@ export interface IImport {
     path: string;
 }
 
+export interface InterfaceMetaData {
+    extendInterfaceIndex: number;
+    interfaceBodyStart: number;
+}
+
 export interface ExtractMetaData {
-    extendInterfaceIndex?: number;
+    interfaceMetaData?: InterfaceMetaData;
     isProperty?: boolean;
 }
 
@@ -195,11 +200,11 @@ function getTSTypeLiteralTypes(x: TSTypeLiteral) {
 function extractAllTypescriptTypesFromAST(ast: Program) {
     return ast.body
         .map((node) => {
-            // e.g. 'export interface | type | ...'
+            // e.g. 'export interface | type | enum'
             if (node.type === 'ExportNamedDeclaration' && node.declaration && isTSTypes(node.declaration))
                 return node.declaration;
 
-            // e.g. 'interface | type | ...'
+            // e.g. 'interface | type | enum'
             if (isTSTypes(node)) return node;
 
             return null;
@@ -272,13 +277,13 @@ export async function extractTypesFromSource(
      * Extract ts types by name.
      */
     function extractTypeByName(name: string, metadata: ExtractMetaData = {}) {
-        let { extendInterfaceIndex, isProperty } = metadata;
+        const { interfaceMetaData, isProperty } = metadata;
 
-        extendInterfaceIndex ??= extendsMap.get(name);
+        const extendInterfaceIndex = interfaceMetaData?.extendInterfaceIndex ?? extendsMap.get(name);
 
         const node = nodeMap.get(name);
         if (node) {
-            _ExtractTypeByName(node, { extendInterfaceIndex, isProperty });
+            _ExtractTypeByName(node, { interfaceMetaData, isProperty });
         } else {
             if (isNumber(extendInterfaceIndex)) {
                 extendsMap.set(name, extendInterfaceIndex);
@@ -316,10 +321,13 @@ export async function extractTypesFromSource(
             });
     };
 
-    function extractExtendInterfaces(interfaces: TSExpressionWithTypeArguments[], extendInterfaceIndex: number) {
+    function extractExtendInterfaces(
+        interfaces: TSExpressionWithTypeArguments[],
+        interfaceMetaData: InterfaceMetaData,
+    ) {
         for (const extend of interfaces) {
             if (extend.expression.type === 'Identifier') {
-                extractTypeByName(extend.expression.name, { extendInterfaceIndex });
+                extractTypeByName(extend.expression.name, { interfaceMetaData });
             }
         }
     }
@@ -329,7 +337,7 @@ export async function extractTypesFromSource(
      * in the interface to look for types to extract
      */
     const extractTypesFromInterface = (node: TSInterfaceDeclaration, metadata: ExtractMetaData) => {
-        const { extendInterfaceIndex, isProperty } = metadata;
+        const { interfaceMetaData: { extendInterfaceIndex, interfaceBodyStart } = {}, isProperty } = metadata;
 
         const interfaceName = node.id.name;
         const extendsInterfaces = node.extends;
@@ -340,35 +348,40 @@ export async function extractTypesFromSource(
             return;
         }
 
-        let bodyStart = node.body.start!;
-        let bodyEnd = node.body.end!;
+        const bodyStart = node.body.start!;
+        const bodyEnd = node.body.end!;
+
+        console.log(interfaceName, bodyStart);
 
         if (isNumber(extendInterfaceIndex)) {
-            bodyStart += 1;
+            const interfaceInfo = extractedTypes[extendInterfaceIndex];
+
+            interfaceInfo[1] = insertString(
+                interfaceInfo[1],
+                interfaceBodyStart! + 1,
+                extractFromPosition(bodyStart + 1, bodyEnd - 1),
+            );
 
             if (extendsInterfaces) {
-                bodyEnd -= 1;
-
-                extractedTypes[extendInterfaceIndex][1] += extractFromPosition(bodyStart, bodyEnd);
-                extractExtendInterfaces(extendsInterfaces, extendInterfaceIndex);
-            } else {
-                extractedTypes[extendInterfaceIndex][1] += extractFromPosition(bodyStart, bodyEnd);
+                extractExtendInterfaces(extendsInterfaces, {
+                    extendInterfaceIndex,
+                    interfaceBodyStart: interfaceBodyStart!,
+                });
             }
-        } else if (extendsInterfaces) {
-            bodyEnd -= 1;
-
+        } else {
             const interfaceIndex =
                 extractedTypes.push([
                     interfaceName,
                     `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`,
                 ]) - 1;
 
-            extractExtendInterfaces(extendsInterfaces, interfaceIndex);
-        } else {
-            extractedTypes.push([
-                interfaceName,
-                `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`,
-            ]);
+            if (extendsInterfaces) {
+                extractExtendInterfaces(extendsInterfaces, {
+                    extendInterfaceIndex: interfaceIndex,
+                    // 'interface A '.length -> 12
+                    interfaceBodyStart: interfaceName.length + 11,
+                });
+            }
         }
 
         for (const prop of node.body.body) {
@@ -413,15 +426,17 @@ export async function extractTypesFromSource(
         extractTypeByName(typeName);
     }
 
-    await Promise.all(
-        Object.entries(groupImports(imports)).map(async ([modulePath, importedFields]) => {
-            const intersection = intersect(importedFields, missingTypes);
+    if (missingTypes.length) {
+        await Promise.all(
+            Object.entries(groupImports(imports)).map(async ([modulePath, importedFields]) => {
+                const intersection = intersect(importedFields, missingTypes);
 
-            if (intersection.length) {
-                await extractTypesFromModule(modulePath, intersection);
-            }
-        }),
-    );
+                if (intersection.length) {
+                    await extractTypesFromModule(modulePath, intersection);
+                }
+            }),
+        );
+    }
 
     return extractedTypes;
 }

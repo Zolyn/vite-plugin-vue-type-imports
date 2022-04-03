@@ -94,7 +94,7 @@ export async function resolveModulePath(
         onlyFiles: true,
     });
 
-    if (files.length > 0) return files[0];
+    if (files.length) return files[0];
 
     return null;
 }
@@ -164,4 +164,8 @@ export class CodeCache {
 
         return value;
     }
+}
+
+export function insertString(source: string, start: number, insertVal: string): string {
+    return source.slice(0, start) + insertVal + source.slice(start);
 }
