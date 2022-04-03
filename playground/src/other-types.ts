@@ -8,15 +8,16 @@ export enum Size {
 
 export type Color = 'blue' | 'red' | MoreColors;
 
-// interface BaseProps {
-//     base: boolean;
-// }
+interface BaseProps {
+    base: any;
+}
 
 interface Props extends BaseProps {
     msg: string;
+    base: false;
 }
 
-export interface ButtonProps {
+export interface ButtonProps extends Props {
     color: Color;
-    size: Props;
+    size: BaseProps;
 }

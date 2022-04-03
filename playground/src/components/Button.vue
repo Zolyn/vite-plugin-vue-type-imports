@@ -14,7 +14,15 @@ import { ButtonProps } from '~/button-types';
 //     size: number | Size | A;
 // }
 
-const props = defineProps<ButtonProps>();
+const df = {
+    size: () => ({ msg: '1', base: true }),
+    color: 'blue',
+};
+
+const props = withDefaults(defineProps<ButtonProps>(), {
+    size: () => ({ msg: '1', base: true }),
+    color: 'blue',
+});
 </script>
 
 <template>
