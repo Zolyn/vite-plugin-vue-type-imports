@@ -38,7 +38,7 @@ export async function transform(code: string, { id, aliases, clean }: TransformO
     let resolvedTypes = (
         await Promise.all(
             Object.entries(groupImports(imports)).map(async ([unresolvedPath, importedFields]) => {
-                const intersection = intersect(importedFields, interfaces);
+                const intersection = intersect(importedFields, interfaces) as string[];
                 // console.log('Intersect:', intersection);
 
                 let path: string | null = null;

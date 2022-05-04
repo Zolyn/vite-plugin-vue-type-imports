@@ -228,8 +228,8 @@ export async function extractTypesFromSource(
     { relativePath, aliases, extracted, map }: ExtractTypesFromSourceOptions,
 ) {
     const extractedTypes: [string, string][] = extracted ?? [];
+    const interfaceMap = map ?? new Map<string, number>();
     const missingTypes: string[] = [];
-    const extendsMap = map ?? new Map<string, number>();
     const ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program;
 
     // Get external types
@@ -253,7 +253,7 @@ export async function extractTypesFromSource(
         return nodeMap;
     }
 
-    function _ExtractTypeByName(node: TSTypes, metadata: ExtractMetaData) {
+    function ExtractTypeByNode(node: TSTypes, metadata: ExtractMetaData) {
         switch (node.type) {
             // Types e.g. export Type Color = 'red' | 'blue'
             case 'TSTypeAliasDeclaration': {
@@ -279,14 +279,14 @@ export async function extractTypesFromSource(
     function extractTypeByName(name: string, metadata: ExtractMetaData = {}) {
         const { interfaceMetaData, isProperty } = metadata;
 
-        const extendInterfaceIndex = interfaceMetaData?.extendInterfaceIndex ?? extendsMap.get(name);
+        const extendInterfaceIndex = interfaceMetaData?.extendInterfaceIndex ?? interfaceMap.get(name);
 
         const node = nodeMap.get(name);
         if (node) {
-            _ExtractTypeByName(node, { interfaceMetaData, isProperty });
+            ExtractTypeByNode(node, { interfaceMetaData, isProperty });
         } else {
             if (isNumber(extendInterfaceIndex)) {
-                extendsMap.set(name, extendInterfaceIndex);
+                interfaceMap.set(name, extendInterfaceIndex);
             }
 
             missingTypes.push(name);
@@ -307,7 +307,7 @@ export async function extractTypesFromSource(
             relativePath: path,
             aliases,
             extracted: extractedTypes,
-            map: extendsMap,
+            map: interfaceMap,
         });
     };
 

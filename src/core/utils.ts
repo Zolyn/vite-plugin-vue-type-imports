@@ -7,6 +7,8 @@ import { IImport } from './ast';
 
 type Pkg = Partial<Record<'types' | 'typings', string>>;
 
+export type MaybeAliases = ((AliasOptions | undefined) & Alias[]) | undefined;
+
 /**
  * Source: https://github.com/rollup/plugins/blob/master/packages/alias/src/index.ts
  */
@@ -38,7 +40,7 @@ export function searchPackageJSON(dir: string): string | undefined {
     return packageJsonPath;
 }
 
-export function resolvePath(path: string, from: string, aliases: ((AliasOptions | undefined) & Alias[]) | undefined) {
+export function resolvePath(path: string, from: string, aliases: MaybeAliases) {
     const matchedEntry = aliases?.find((entry) => matches(entry.find, path));
 
     // Path which is using aliases. e.g. '~/types'
@@ -80,7 +82,7 @@ export function resolvePath(path: string, from: string, aliases: ((AliasOptions 
 export async function resolveModulePath(
     path: string,
     from: string,
-    aliases: ((AliasOptions | undefined) & Alias[]) | undefined,
+    aliases: MaybeAliases,
 ) {
     const maybePath = resolvePath(path, from, aliases)?.replace(/\\/g, '/');
 
@@ -111,9 +113,10 @@ export function groupImports(imports: IImport[]) {
     }, {});
 }
 
-export function intersect<R = any>(a: Array<any>, b: Array<any>) {
+export function intersect<A = any,B = any>(a: Array<A>, b: Array<B>): (A | B)[] {
     const setB = new Set(b);
-    return [...new Set(a)].filter((x) => setB.has(x)) as R[];
+    // @ts-ignore
+    return [...new Set(a)].filter((x) => setB.has(x));
 }
 
 export interface Replacement {
