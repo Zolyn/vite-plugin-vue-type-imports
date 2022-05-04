@@ -17,7 +17,7 @@ import {
 import { babelParse } from '@vue/compiler-sfc';
 import fs from 'fs';
 import { Alias, AliasOptions } from 'vite';
-import { groupImports, insertString, intersect, resolveModulePath } from './utils';
+import { groupImports, insertString, intersect, resolveModulePath, StringMap } from './utils';
 
 const DEFINE_PROPS = 'defineProps';
 const DEFINE_EMITS = 'defineEmits';
@@ -37,7 +37,7 @@ export interface IImport {
 }
 
 export interface InterfaceMetaData {
-    extendInterfaceIndex: number;
+    extendInterfaceName: string;
     interfaceBodyStart: number;
 }
 
@@ -212,11 +212,14 @@ function extractAllTypescriptTypesFromAST(ast: Program) {
         .filter((x): x is TSTypes => x !== null);
 }
 
+type ExtractedTypes = StringMap;
+type InterfaceMap = StringMap;
+
 interface ExtractTypesFromSourceOptions {
     relativePath: string;
     aliases: ((AliasOptions | undefined) & Alias[]) | undefined;
-    extracted?: [string, string][];
-    map?: Map<string, number>;
+    extracted?: ExtractedTypes;
+    map?: InterfaceMap;
 }
 
 /**
@@ -227,8 +230,8 @@ export async function extractTypesFromSource(
     types: string[],
     { relativePath, aliases, extracted, map }: ExtractTypesFromSourceOptions,
 ) {
-    const extractedTypes: [string, string][] = extracted ?? [];
-    const interfaceMap = map ?? new Map<string, number>();
+    const extractedTypes: ExtractedTypes = extracted ?? new Map<string, string>();
+    const interfaceMap = map ?? new Map<string, string>();
     const missingTypes: string[] = [];
     const ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program;
 
@@ -279,14 +282,19 @@ export async function extractTypesFromSource(
     function extractTypeByName(name: string, metadata: ExtractMetaData = {}) {
         const { interfaceMetaData, isProperty } = metadata;
 
-        const extendInterfaceIndex = interfaceMetaData?.extendInterfaceIndex ?? interfaceMap.get(name);
+        // Skip already extracted types
+        if (extractedTypes.get(name)) {
+            return;
+        }
+
+        const extendInterfaceName = interfaceMetaData?.extendInterfaceName ?? interfaceMap.get(name);
 
         const node = nodeMap.get(name);
         if (node) {
             ExtractTypeByNode(node, { interfaceMetaData, isProperty });
         } else {
-            if (isNumber(extendInterfaceIndex)) {
-                interfaceMap.set(name, extendInterfaceIndex);
+            if (extendInterfaceName) {
+                interfaceMap.set(name, extendInterfaceName);
             }
 
             missingTypes.push(name);
@@ -337,47 +345,41 @@ export async function extractTypesFromSource(
      * in the interface to look for types to extract
      */
     const extractTypesFromInterface = (node: TSInterfaceDeclaration, metadata: ExtractMetaData) => {
-        const { interfaceMetaData: { extendInterfaceIndex, interfaceBodyStart } = {}, isProperty } = metadata;
+        const { interfaceMetaData: { extendInterfaceName, interfaceBodyStart } = {}, isProperty } = metadata;
 
         const interfaceName = node.id.name;
         const extendsInterfaces = node.extends;
 
         // Skip all process, since Vue only transform the type of nested objects to 'Object'
         if (isProperty) {
-            extractedTypes.push([interfaceName, `interface ${interfaceName} {}`]);
+            extractedTypes.set(interfaceName, `interface ${interfaceName} {}`);
             return;
         }
 
         const bodyStart = node.body.start!;
         const bodyEnd = node.body.end!;
 
-        console.log(interfaceName, bodyStart);
+        // console.log(interfaceName, bodyStart);
 
-        if (isNumber(extendInterfaceIndex)) {
-            const interfaceInfo = extractedTypes[extendInterfaceIndex];
-
-            interfaceInfo[1] = insertString(
-                interfaceInfo[1],
+        if (extendInterfaceName) {
+            extractedTypes.set(extendInterfaceName, insertString(
+                extractedTypes.get(extendInterfaceName)!,
                 interfaceBodyStart! + 1,
                 extractFromPosition(bodyStart + 1, bodyEnd - 1),
-            );
+            ));
 
             if (extendsInterfaces) {
                 extractExtendInterfaces(extendsInterfaces, {
-                    extendInterfaceIndex,
+                    extendInterfaceName,
                     interfaceBodyStart: interfaceBodyStart!,
                 });
             }
         } else {
-            const interfaceIndex =
-                extractedTypes.push([
-                    interfaceName,
-                    `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`,
-                ]) - 1;
+            extractedTypes.set(interfaceName, `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`)
 
             if (extendsInterfaces) {
                 extractExtendInterfaces(extendsInterfaces, {
-                    extendInterfaceIndex: interfaceIndex,
+                    extendInterfaceName: interfaceName,
                     // 'interface A '.length -> 12
                     interfaceBodyStart: interfaceName.length + 11,
                 });
@@ -402,7 +404,7 @@ export async function extractTypesFromSource(
      * Extract types from TSTypeAlias
      */
     const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration, metadata: ExtractMetaData) => {
-        extractedTypes.push([node.id.name, extractFromPosition(node.start, node.end)]);
+        extractedTypes.set(node.id.name, extractFromPosition(node.start, node.end));
 
         if (node.typeAnnotation.type === 'TSUnionType') extractTypesFromTSUnionType(node.typeAnnotation);
 
@@ -419,7 +421,7 @@ export async function extractTypesFromSource(
      */
     const extractTypesFromEnum = (node: TSEnumDeclaration) => {
         const enumName = node.id.name;
-        extractedTypes.push([enumName, `type ${enumName} = number | string;`]);
+        extractedTypes.set(enumName, `type ${enumName} = number | string;`);
     };
 
     for (const typeName of types) {

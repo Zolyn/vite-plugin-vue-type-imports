@@ -7,6 +7,8 @@ import { IImport } from './ast';
 
 type Pkg = Partial<Record<'types' | 'typings', string>>;
 
+export type StringMap = Map<string, string>;
+
 export type MaybeAliases = ((AliasOptions | undefined) & Alias[]) | undefined;
 
 /**

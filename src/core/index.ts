@@ -57,9 +57,9 @@ export async function transform(code: string, { id, aliases, clean }: TransformO
                             relativePath: path,
                             aliases,
                         })
-                    ).reverse();
+                    );
 
-                    return types;
+                    return [...types].reverse();
                 }
 
                 return null;
