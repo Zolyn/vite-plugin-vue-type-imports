@@ -19,5 +19,6 @@ interface Props extends BaseProps {
 
 export interface ButtonProps extends Props {
     color: Color;
+    co: Color;
     size: BaseProps;
 }
