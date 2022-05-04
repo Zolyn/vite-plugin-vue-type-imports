@@ -121,8 +121,8 @@ packages:
       '@types/throttle-debounce': 2.1.0
     dev: true
 
-  /@antfu/utils/0.5.0:
-    resolution: {integrity: sha512-MrAQ/MrPSxbh1bBrmwJjORfJymw4IqSHFBXqvxaga3ZdDM+/zokYF8DjyJpSjY2QmpmgQrajDUBJOWrYeARfzA==}
+  /@antfu/utils/0.5.1:
+    resolution: {integrity: sha512-8Afo0+xvYe1K8Wm4xHTymfTkpzy36aaqDvhXIayUwl+mecMG9Xzl3XjXa6swG6Bk8FBeQ646RyvmsYt6+2Be9g==}
     dev: true
 
   /@babel/code-frame/7.16.7:
@@ -498,7 +498,7 @@ packages:
     resolution: {integrity: sha512-m+rnw7qKHq/XF7DAi4BcFoEAcXBfqqMgQJh8brGEHeqE/RUvgDMjmxsHgWnVpFsG+VmjGyAiI7nwXdliCwEU0Q==}
     dependencies:
       '@antfu/install-pkg': 0.1.0
-      '@antfu/utils': 0.5.0
+      '@antfu/utils': 0.5.1
       '@iconify/types': 1.1.0
       debug: 4.3.4
       kolorist: 1.5.1
@@ -872,8 +872,8 @@ packages:
       release-it: 14.14.0
     dev: true
 
-  /@rollup/pluginutils/4.2.0:
-    resolution: {integrity: sha512-2WUyJNRkyH5p487pGnn4tWAsxhEFKN/pT8CMgHshd5H+IXkOnKvKZwsz5ZWz+YCXkleZRAU5kwbfgF8CPfDRqA==}
+  /@rollup/pluginutils/4.2.1:
+    resolution: {integrity: sha512-iKnFXr7NkdZAIHiIWE+BX5ULi/ucVFYWD6TbAV+rZctiRTY2PL6tsIKhoIOaoskiWAkgu+VsbXgUVDNLHf+InQ==}
     engines: {node: '>= 8.0.0'}
     dependencies:
       estree-walker: 2.0.2
@@ -1245,7 +1245,7 @@ packages:
   /@unocss/vite/0.7.7:
     resolution: {integrity: sha512-lRhvTWIT3jR1t2yb4YpcfhsM9lPKOUho4M/wiKvW1QOwhjIXHPIdv3seijQcHwDkN6SuhA4Acg4rYpqOuwBTYg==}
     dependencies:
-      '@rollup/pluginutils': 4.2.0
+      '@rollup/pluginutils': 4.2.1
       '@unocss/config': 0.7.7
       '@unocss/core': 0.7.7
       '@unocss/inspector': 0.7.7
@@ -6091,7 +6091,7 @@ packages:
         optional: true
     dependencies:
       '@antfu/utils': 0.3.0
-      '@rollup/pluginutils': 4.2.0
+      '@rollup/pluginutils': 4.2.1
       '@vueuse/core': 6.9.2_vue@3.2.31
       local-pkg: 0.4.1
       magic-string: 0.25.9
@@ -6117,7 +6117,7 @@ packages:
         optional: true
     dependencies:
       '@antfu/utils': 0.4.0
-      '@rollup/pluginutils': 4.2.0
+      '@rollup/pluginutils': 4.2.1
       chokidar: 3.5.3
       debug: 4.3.4
       fast-glob: 3.2.11
@@ -6252,7 +6252,7 @@ packages:
     peerDependencies:
       vite: ^2.0.0
     dependencies:
-      '@rollup/pluginutils': 4.2.0
+      '@rollup/pluginutils': 4.2.1
       debug: 4.3.4
       kolorist: 1.5.1
       sirv: 2.0.2
