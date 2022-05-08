@@ -98,6 +98,7 @@ export function getAvailableImportsFromAst(ast: Program): GetImportsResult {
 export function getAvailableExportsFromAst(ast: Program) {
     const exports: IImport[] = [];
 
+    // TODO: Support 'import { a as b }' syntax
     const addExport = (node: ExportNamedFromDeclaration) => {
         for (const specifier of node.specifiers) {
             if (specifier.type === 'ExportSpecifier' && specifier.exported.type === 'Identifier') {
@@ -120,6 +121,7 @@ export function getAvailableExportsFromAst(ast: Program) {
     return exports;
 }
 
+// TODO: Scan internal interfaces
 export function getUsedInterfacesFromAst(ast: Program) {
     const interfaces: GetTypesResult = [];
 
