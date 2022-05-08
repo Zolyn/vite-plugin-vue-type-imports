@@ -421,7 +421,22 @@ export async function extractTypesFromSource(
      */
     const extractTypesFromEnum = (node: TSEnumDeclaration) => {
         const enumName = node.id.name;
-        extractedTypes.set(enumName, `type ${enumName} = number | string;`);
+        const enumTypes: Set<string> = new Set();
+
+        // (semi-stable) Determine the type of enum, may not be able to process the use of complex scenes
+        for (const member of node.members) {
+            if (member.initializer) {
+                if (member.initializer.type === 'NumericLiteral') {
+                    enumTypes.add('number');
+                } else if (member.initializer.type === 'StringLiteral') {
+                    enumTypes.add('string');
+                }
+            } else {
+                enumTypes.add('number');
+            }
+        }
+
+        extractedTypes.set(enumName, `type ${enumName} = ${[...enumTypes].join(' | ') || 'number | string'};`);
     };
 
     for (const typeName of types) {
