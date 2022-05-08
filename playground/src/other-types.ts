@@ -1,9 +1,9 @@
 import { MoreColors, BaseProps } from '~/test';
 
 export enum Size {
-    Small = 'small',
-    Medium = 'medium',
-    Large = 'large',
+    Small,
+    Medium,
+    Large,
 }
 
 export type Color = 'blue' | 'red' | MoreColors;
@@ -19,6 +19,6 @@ interface Props extends BaseProps {
 
 export interface ButtonProps extends Props {
     color: Color;
-    co: Color;
+    co: Size;
     size: BaseProps;
 }
