@@ -65,9 +65,13 @@ defineProps<User>()
 ```
 
 ## Known limitations
-- `import default` , `export default` and `export * from` syntax are not supported.
+- The following syntaxes are not supported currently:
+  - `import default`
+  - `import { a as b }`
+  - `export default`
+  - `export * from`
 - nested type parameters (e.g. `defineProps<Props<T>>()`) are not supported.
-- `Enum` types will be converted to `type [name] = number | string`, since Vue can't handle them right now.
+- `Enum` types will be converted to Union Types (e.g. `type [name] = number | string`) , since Vue can't handle them right now.
 - At this stage, the plugin only scans the imported interfaces and does not process the interfaces defined in the SFC
 - Interface which extends Literal Type or Intersection Type is not supported.
 - Types imported from external packages are not fully supported right now.
