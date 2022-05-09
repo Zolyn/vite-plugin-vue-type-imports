@@ -104,6 +104,7 @@ export async function transform(code: string, { id, aliases, clean }: TransformO
         code.slice(0, scriptSetup.loc.start.offset),
         // Script setup content
         inlinedTypes,
+        // Clean imports
         replaceAtIndexes(scriptSetup.content, replacements, clean),
         // Tag end
         code.slice(scriptSetup.loc.end.offset),

@@ -37,12 +37,8 @@ export interface IImport {
 }
 
 export interface InterfaceMetaData {
-    extendInterfaceName: string;
-    interfaceBodyStart: number;
-}
-
-export interface ExtractMetaData {
-    interfaceMetaData?: InterfaceMetaData;
+    extendInterfaceName?: string;
+    interfaceBodyStart?: number;
     isProperty?: boolean;
 }
 
@@ -122,22 +118,52 @@ export function getAvailableExportsFromAst(ast: Program) {
 }
 
 // TODO: Scan internal interfaces
-export function getUsedInterfacesFromAst(ast: Program) {
-    const interfaces: GetTypesResult = [];
+/**
+ * A simplified version of function "extractTypesFromSource"
+ * NEED HELP: Is there a way to call "extractTypesFromSource" directly?
+ */
+export function getUsedTypesFromAst(ast: Program) {
+    const missingTypes: string[] = [];
+    const internalInterfaces = new Map<string, TSInterfaceDeclaration>();
+    const metaDataMap = new Map<string, InterfaceMetaData>();
+
+    function findTypesByName(name: string) {
+        const internalInterface = internalInterfaces.get(name);
+
+        if (internalInterface) {
+            const extendInterfaces = internalInterface.extends;
+            if (extendInterfaces) {
+                for (const extend of extendInterfaces) {
+                    if (extend.expression.type === 'Identifier') {
+                        findTypesByName(extend.expression.name);
+                    }
+                }
+            }
+
+        } else {
+            missingTypes.push(name);
+        }
+    }
 
     const addInterface = (node: Node) => {
         if (node.type === 'CallExpression' && node.typeParameters?.type === 'TSTypeParameterInstantiation') {
             const propsTypeDefinition = node.typeParameters.params[0];
 
             if (propsTypeDefinition.type === 'TSTypeReference' && propsTypeDefinition.typeName.type === 'Identifier') {
-                interfaces.push(propsTypeDefinition.typeName.name);
+                findTypesByName(propsTypeDefinition.typeName.name);
 
                 // TODO: Support nested type params
-                if (propsTypeDefinition.typeParameters)
-                    interfaces.push(...getTypesFromTypeParameters(propsTypeDefinition.typeParameters));
+                // if (propsTypeDefinition.typeParameters)
+                //     interfaces.push(...getTypesFromTypeParameters(propsTypeDefinition.typeParameters));
             }
         }
     };
+
+    for (const node of ast.body) {
+        if (node.type === 'TSInterfaceDeclaration') {
+            internalInterfaces.set(node.id.name, node);
+        }
+    }
 
     for (const node of ast.body) {
         if (node.type === 'ExpressionStatement') {
@@ -155,7 +181,7 @@ export function getUsedInterfacesFromAst(ast: Program) {
         }
     }
 
-    return interfaces;
+    return missingTypes;
 }
 
 function getTypesFromTypeParameters(x: TSTypeParameterInstantiation) {
@@ -258,11 +284,11 @@ export async function extractTypesFromSource(
         return nodeMap;
     }
 
-    function ExtractTypeByNode(node: TSTypes, metadata: ExtractMetaData) {
+    function ExtractTypeByNode(node: TSTypes, metadata: InterfaceMetaData) {
         switch (node.type) {
             // Types e.g. export Type Color = 'red' | 'blue'
             case 'TSTypeAliasDeclaration': {
-                extractTypesFromTypeAlias(node, metadata);
+                extractTypesFromTypeAlias(node);
                 break;
             }
             // Interfaces e.g. export interface MyInterface {}
@@ -281,19 +307,19 @@ export async function extractTypesFromSource(
     /**
      * Extract ts types by name.
      */
-    function extractTypeByName(name: string, metadata: ExtractMetaData = {}) {
-        const { interfaceMetaData, isProperty } = metadata;
+    function extractTypeByName(name: string, metadata: InterfaceMetaData = {}) {
+        let { extendInterfaceName, isProperty } = metadata;
 
         // Skip already extracted types
         if (extractedTypes.get(name)) {
             return;
         }
 
-        const extendInterfaceName = interfaceMetaData?.extendInterfaceName ?? interfaceMap.get(name);
-
+        extendInterfaceName ??= interfaceMap.get(name);
         const node = nodeMap.get(name);
+
         if (node) {
-            ExtractTypeByNode(node, { interfaceMetaData, isProperty });
+            ExtractTypeByNode(node, { extendInterfaceName, isProperty });
         } else {
             if (extendInterfaceName) {
                 interfaceMap.set(name, extendInterfaceName);
@@ -337,7 +363,7 @@ export async function extractTypesFromSource(
     ) {
         for (const extend of interfaces) {
             if (extend.expression.type === 'Identifier') {
-                extractTypeByName(extend.expression.name, { interfaceMetaData });
+                extractTypeByName(extend.expression.name, interfaceMetaData);
             }
         }
     }
@@ -346,8 +372,8 @@ export async function extractTypesFromSource(
      * Extract ts type interfaces. Should also check top-level properties
      * in the interface to look for types to extract
      */
-    const extractTypesFromInterface = (node: TSInterfaceDeclaration, metadata: ExtractMetaData) => {
-        const { interfaceMetaData: { extendInterfaceName, interfaceBodyStart } = {}, isProperty } = metadata;
+    const extractTypesFromInterface = (node: TSInterfaceDeclaration, metadata: InterfaceMetaData) => {
+        const { extendInterfaceName, interfaceBodyStart, isProperty } = metadata;
 
         const interfaceName = node.id.name;
         const extendsInterfaces = node.extends;
@@ -405,7 +431,7 @@ export async function extractTypesFromSource(
     /**
      * Extract types from TSTypeAlias
      */
-    const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration, metadata: ExtractMetaData) => {
+    const extractTypesFromTypeAlias = (node: TSTypeAliasDeclaration) => {
         extractedTypes.set(node.id.name, extractFromPosition(node.start, node.end));
 
         if (node.typeAnnotation.type === 'TSUnionType') extractTypesFromTSUnionType(node.typeAnnotation);
