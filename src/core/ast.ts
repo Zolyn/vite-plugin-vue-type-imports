@@ -16,8 +16,7 @@ import {
 } from '@babel/types';
 import { babelParse } from '@vue/compiler-sfc';
 import fs from 'fs';
-import { Alias, AliasOptions } from 'vite';
-import { groupImports, insertString, intersect, resolveModulePath, StringMap } from './utils';
+import { groupImports, insertString, intersect, MaybeAliases, Replacement, resolveModulePath, StringMap } from './utils';
 
 const DEFINE_PROPS = 'defineProps';
 const DEFINE_EMITS = 'defineEmits';
@@ -117,40 +116,15 @@ export function getAvailableExportsFromAst(ast: Program) {
     return exports;
 }
 
-// TODO: Scan internal interfaces
-/**
- * A simplified version of function "extractTypesFromSource"
- * NEED HELP: Is there a way to call "extractTypesFromSource" directly?
- */
-export function getUsedTypesFromAst(ast: Program) {
-    const missingTypes: string[] = [];
-    const internalInterfaces = new Map<string, TSInterfaceDeclaration>();
-    const metaDataMap = new Map<string, InterfaceMetaData>();
-
-    function findTypesByName(name: string) {
-        const internalInterface = internalInterfaces.get(name);
-
-        if (internalInterface) {
-            const extendInterfaces = internalInterface.extends;
-            if (extendInterfaces) {
-                for (const extend of extendInterfaces) {
-                    if (extend.expression.type === 'Identifier') {
-                        findTypesByName(extend.expression.name);
-                    }
-                }
-            }
-
-        } else {
-            missingTypes.push(name);
-        }
-    }
+export function getUsedInterfacesFromAst(ast: Program) {
+    const interfaces: string[] = [];
 
     const addInterface = (node: Node) => {
         if (node.type === 'CallExpression' && node.typeParameters?.type === 'TSTypeParameterInstantiation') {
             const propsTypeDefinition = node.typeParameters.params[0];
 
             if (propsTypeDefinition.type === 'TSTypeReference' && propsTypeDefinition.typeName.type === 'Identifier') {
-                findTypesByName(propsTypeDefinition.typeName.name);
+                interfaces.push(propsTypeDefinition.typeName.name);
 
                 // TODO: Support nested type params
                 // if (propsTypeDefinition.typeParameters)
@@ -158,12 +132,6 @@ export function getUsedTypesFromAst(ast: Program) {
             }
         }
     };
-
-    for (const node of ast.body) {
-        if (node.type === 'TSInterfaceDeclaration') {
-            internalInterfaces.set(node.id.name, node);
-        }
-    }
 
     for (const node of ast.body) {
         if (node.type === 'ExpressionStatement') {
@@ -181,7 +149,7 @@ export function getUsedTypesFromAst(ast: Program) {
         }
     }
 
-    return missingTypes;
+    return interfaces;
 }
 
 function getTypesFromTypeParameters(x: TSTypeParameterInstantiation) {
@@ -225,15 +193,15 @@ function getTSTypeLiteralTypes(x: TSTypeLiteral) {
     return types;
 }
 
-function extractAllTypescriptTypesFromAST(ast: Program) {
+function extractAllTypescriptTypesFromAST(ast: Program, isInternal: boolean) {
     return ast.body
         .map((node) => {
             // e.g. 'export interface | type | enum'
-            if (node.type === 'ExportNamedDeclaration' && node.declaration && isTSTypes(node.declaration))
+            if (node.type === 'ExportNamedDeclaration' && node.declaration && isTSTypes(node.declaration, isInternal))
                 return node.declaration;
 
             // e.g. 'interface | type | enum'
-            if (isTSTypes(node)) return node;
+            if (isTSTypes(node, isInternal)) return node;
 
             return null;
         })
@@ -241,13 +209,21 @@ function extractAllTypescriptTypesFromAST(ast: Program) {
 }
 
 type ExtractedTypes = StringMap;
-type InterfaceMap = StringMap;
+type MetaDataMap = Map<string, InterfaceMetaData>;
 
 interface ExtractTypesFromSourceOptions {
     relativePath: string;
-    aliases: ((AliasOptions | undefined) & Alias[]) | undefined;
-    extracted?: ExtractedTypes;
-    map?: InterfaceMap;
+    aliases: MaybeAliases
+    extractedTypes?: ExtractedTypes;
+    metaDataMap?: MetaDataMap;
+    // For internal interfaces
+    ast?: Program;
+    isInternal?: boolean;
+}
+
+interface ExtractResult {
+    result: StringMap;
+    extraReplacements?: Replacement[];
 }
 
 /**
@@ -256,26 +232,37 @@ interface ExtractTypesFromSourceOptions {
 export async function extractTypesFromSource(
     source: string,
     types: string[],
-    { relativePath, aliases, extracted, map }: ExtractTypesFromSourceOptions,
-) {
-    const extractedTypes: ExtractedTypes = extracted ?? new Map<string, string>();
-    const interfaceMap = map ?? new Map<string, string>();
+    options: ExtractTypesFromSourceOptions,
+): Promise<ExtractResult> {
+    const {
+        relativePath,
+        aliases,
+        ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program,
+        isInternal = false,
+        extractedTypes = new Map<string, string>(),
+        metaDataMap = new Map<string, InterfaceMetaData>(),
+    } = options;
+
+    console.log(types);
+
     const missingTypes: string[] = [];
-    const ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program;
 
     // Get external types
-    const imports = [...getAvailableImportsFromAst(ast).imports, ...getAvailableExportsFromAst(ast)];
-    const typescriptNodes = extractAllTypescriptTypesFromAST(ast);
-    const nodeMap = getTSNodeMap();
-    // console.log(nodeMap);
+    const imports = [...getAvailableImportsFromAst(ast).imports];
+
+    if (!isInternal) {
+        imports.push(...getAvailableExportsFromAst(ast));
+    }
+
+    const nodeMap = getTSNodeMap(extractAllTypescriptTypesFromAST(ast, isInternal));
 
     const extractFromPosition = (start: number | null, end: number | null) =>
         isNumber(start) && isNumber(end) ? source.slice(start, end) : '';
 
-    function getTSNodeMap(): NodeMap {
+    function getTSNodeMap(nodes: TSTypes[]): NodeMap {
         const nodeMap = new Map<string, TSTypes>();
 
-        for (const node of typescriptNodes) {
+        for (const node of nodes) {
             if ('name' in node.id) {
                 nodeMap.set(node.id.name, node);
             }
@@ -284,7 +271,7 @@ export async function extractTypesFromSource(
         return nodeMap;
     }
 
-    function ExtractTypeByNode(node: TSTypes, metadata: InterfaceMetaData) {
+    function ExtractTypeByNode(node: TSTypes) {
         switch (node.type) {
             // Types e.g. export Type Color = 'red' | 'blue'
             case 'TSTypeAliasDeclaration': {
@@ -293,7 +280,7 @@ export async function extractTypesFromSource(
             }
             // Interfaces e.g. export interface MyInterface {}
             case 'TSInterfaceDeclaration': {
-                extractTypesFromInterface(node, metadata);
+                extractTypesFromInterface(node);
                 break;
             }
             // Enums e.g. export enum UserType {}
@@ -307,24 +294,17 @@ export async function extractTypesFromSource(
     /**
      * Extract ts types by name.
      */
-    function extractTypeByName(name: string, metadata: InterfaceMetaData = {}) {
-        let { extendInterfaceName, isProperty } = metadata;
-
+    function extractTypeByName(name: string) {
         // Skip already extracted types
         if (extractedTypes.get(name)) {
             return;
         }
 
-        extendInterfaceName ??= interfaceMap.get(name);
         const node = nodeMap.get(name);
 
         if (node) {
-            ExtractTypeByNode(node, { extendInterfaceName, isProperty });
+            ExtractTypeByNode(node);
         } else {
-            if (extendInterfaceName) {
-                interfaceMap.set(name, extendInterfaceName);
-            }
-
             missingTypes.push(name);
             // console.log('Missing types:', missingTypes);
         }
@@ -333,21 +313,24 @@ export async function extractTypesFromSource(
     // Recursively calls this function to find types from other modules.
     const extractTypesFromModule = async (modulePath: string, types: string[]) => {
         const path = await resolveModulePath(modulePath, relativePath, aliases);
-        if (!path) return [];
+
+        if (!path) {
+            return;
+        }
 
         // NOTE: Slow when use fsPromises.readFile(), tested on Arch Linux x64 (Kernel 5.16.11)
         // Wondering what make it slow. Temporarily, use fs.readFileSync() instead.
         const contents = fs.readFileSync(path, 'utf-8');
 
-        return extractTypesFromSource(contents, types, {
+        await extractTypesFromSource(contents, types, {
             relativePath: path,
             aliases,
-            extracted: extractedTypes,
-            map: interfaceMap,
+            extractedTypes,
+            metaDataMap,
         });
     };
 
-    const extractTypesFromTSUnionType = async (union: TSUnionType) => {
+    const extractTypesFromTSUnionType = (union: TSUnionType) => {
         union.types
             .filter((n): n is TSTypeReference => n.type === 'TSTypeReference')
             .forEach((typeReference) => {
@@ -363,7 +346,8 @@ export async function extractTypesFromSource(
     ) {
         for (const extend of interfaces) {
             if (extend.expression.type === 'Identifier') {
-                extractTypeByName(extend.expression.name, interfaceMetaData);
+                metaDataMap.set(extend.expression.name, interfaceMetaData);
+                extractTypeByName(extend.expression.name);
             }
         }
     }
@@ -372,8 +356,8 @@ export async function extractTypesFromSource(
      * Extract ts type interfaces. Should also check top-level properties
      * in the interface to look for types to extract
      */
-    const extractTypesFromInterface = (node: TSInterfaceDeclaration, metadata: InterfaceMetaData) => {
-        const { extendInterfaceName, interfaceBodyStart, isProperty } = metadata;
+    const extractTypesFromInterface = (node: TSInterfaceDeclaration) => {
+        const { extendInterfaceName, interfaceBodyStart, isProperty } = metaDataMap.get(node.id.name) ?? {};
 
         const interfaceName = node.id.name;
         const extendsInterfaces = node.extends;
@@ -386,8 +370,6 @@ export async function extractTypesFromSource(
 
         const bodyStart = node.body.start!;
         const bodyEnd = node.body.end!;
-
-        // console.log(interfaceName, bodyStart);
 
         if (extendInterfaceName) {
             extractedTypes.set(extendInterfaceName, insertString(
@@ -411,6 +393,8 @@ export async function extractTypesFromSource(
                     // 'interface A '.length -> 12
                     interfaceBodyStart: interfaceName.length + 11,
                 });
+            } else if (isInternal) {
+                extractedTypes.delete(interfaceName);
             }
         }
 
@@ -422,8 +406,10 @@ export async function extractTypesFromSource(
                 else if (
                     prop.typeAnnotation?.typeAnnotation.type === 'TSTypeReference' &&
                     prop.typeAnnotation.typeAnnotation.typeName.type === 'Identifier'
-                )
-                    extractTypeByName(prop.typeAnnotation.typeAnnotation.typeName.name, { isProperty: true });
+                ) {
+                    metaDataMap.set(prop.typeAnnotation.typeAnnotation.typeName.name, { isProperty: true });
+                    extractTypeByName(prop.typeAnnotation.typeAnnotation.typeName.name);
+                }
             }
         }
     };
@@ -483,7 +469,10 @@ export async function extractTypesFromSource(
         );
     }
 
-    return extractedTypes;
+    return {
+        result: extractedTypes,
+        extraReplacements: [],
+    };
 }
 
 export function isNumber(n: unknown): n is number {
@@ -499,7 +488,11 @@ export function isCallOf(node: MaybeNode, test: string | ((id: string) => boolea
     );
 }
 
-export function isTSTypes(node: MaybeNode): node is TSTypes {
+export function isTSTypes(node: MaybeNode, isInternal: boolean): node is TSTypes {
+    if (isInternal) {
+        return !!(node && node.type === 'TSInterfaceDeclaration');
+    }
+
     return !!(node && TS_TYPES_KEYS.includes(node.type));
 }
 

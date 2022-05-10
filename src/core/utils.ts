@@ -48,6 +48,7 @@ export function resolvePath(path: string, from: string, aliases: MaybeAliases) {
     // Path which is using aliases. e.g. '~/types'
     if (matchedEntry) return path.replace(matchedEntry.find, matchedEntry.replacement);
 
+    // Module
     const resolved_path = resolveModule(path);
 
     // Not a module. e.g. '../types'
