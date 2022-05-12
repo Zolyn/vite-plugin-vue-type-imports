@@ -1,13 +1,14 @@
 import { Plugin, ResolvedConfig } from 'vite';
-import { transform } from './core';
+import { CleanOptions, transform } from './core';
 import { CodeCache } from './core/utils';
 
 interface PluginOptions {
-    clean?: boolean;
+    clean?: CleanOptions;
 }
 
+// TODO: HMR
 export default function VitePluginVueTypeImports(options: PluginOptions = {}): Plugin {
-    const clean = options.clean ?? false;
+    const clean = options.clean ?? {};
     let resolvedConfig: ResolvedConfig | undefined;
     // NOTE: It might be useful for SSR?
     const cache = new CodeCache();
