@@ -6,7 +6,11 @@ import { ButtonProps } from '~/button-types';
 //     color: 'blue',
 // };
 
-interface BProps extends ButtonProps {
+interface InputProps {
+    name: string;
+}
+
+interface BProps extends ButtonProps, InputProps {
     more: boolean;
 }
 

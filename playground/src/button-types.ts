@@ -1,9 +1,7 @@
-import { Color, Size } from './other-types';
+import { Color } from './other-types';
 export { ButtonProps } from './other-types';
 
-type A = {} & {};
-
-export interface InputProps extends A {
+export interface InputProps{
     name: Color;
 }
 

@@ -1,4 +1,4 @@
-import { MoreColors, BaseProps } from '~/test';
+import { MoreColors } from '~/test';
 
 export enum Size {
     Small,
