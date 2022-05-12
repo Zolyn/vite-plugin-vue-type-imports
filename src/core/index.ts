@@ -1,7 +1,7 @@
 import { parse } from '@vue/compiler-sfc';
 import { Alias, AliasOptions } from 'vite';
 import { extractTypesFromSource, getUsedInterfacesFromAst } from './ast';
-import { getAst, replaceAtIndexes, Replacement } from './utils';
+import { getAst, replaceAtIndexes } from './utils';
 
 export interface CleanOptions {
     newline?: boolean;
