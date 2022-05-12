@@ -3,13 +3,22 @@ import { existsSync, readFileSync } from 'fs';
 import { resolveModule } from 'local-pkg';
 import { dirname, extname, join } from 'path';
 import { Alias, AliasOptions } from 'vite';
+import { babelParse } from '@vue/compiler-sfc';
 import { IImport } from './ast';
+import { Program } from '@babel/types';
 
 type Pkg = Partial<Record<'types' | 'typings', string>>;
 
 export type StringMap = Map<string, string>;
 
 export type MaybeAliases = ((AliasOptions | undefined) & Alias[]) | undefined;
+
+export function getAst(content: string): Program {
+    return babelParse(content, {
+        sourceType: 'module',
+        plugins: ['typescript', 'topLevelAwait'],
+    }).program;
+}
 
 /**
  * Source: https://github.com/rollup/plugins/blob/master/packages/alias/src/index.ts
@@ -48,10 +57,10 @@ export function resolvePath(path: string, from: string, aliases: MaybeAliases) {
     // Path which is using aliases. e.g. '~/types'
     if (matchedEntry) return path.replace(matchedEntry.find, matchedEntry.replacement);
 
-    // Module
+    // External package
     const resolved_path = resolveModule(path);
 
-    // Not a module. e.g. '../types'
+    // Not a package. e.g. '../types'
     if (!resolved_path) {
         return join(dirname(from), path);
     }
@@ -125,22 +134,18 @@ export function intersect<A = any,B = any>(a: Array<A>, b: Array<B>): (A | B)[] 
 export interface Replacement {
     start: number;
     end: number;
-    empty: boolean;
+    replacement: string;
 }
 
 /**
- * Replace all items at specified indexes while keeping indexes relative during replacements.
+ * Replace all items at specified indexes from the bottom up.
  */
-export function replaceAtIndexes(source: string, replacements: Replacement[], clean: boolean): string {
+export function replaceAtIndexes(source: string, replacements: Replacement[], clean: boolean = false): string {
+    replacements.sort((a, b) => b.start - a.start)
     let result = source;
-    let offset = 0;
 
     for (const node of replacements) {
-        if (node.empty) {
-            result = result.slice(0, node.start + offset) + result.slice(node.end + offset);
-
-            offset -= node.end - node.start;
-        }
+        result = result.slice(0, node.start) + node.replacement + result.slice(node.end);
     }
 
     // remove empty newline -> ''
