@@ -14,9 +14,8 @@ import {
     TSTypeReference,
     TSUnionType
 } from '@babel/types';
-import { babelParse } from '@vue/compiler-sfc';
 import fs from 'fs';
-import { groupImports, insertString, intersect, MaybeAliases, Replacement, resolveModulePath, StringMap } from './utils';
+import { getAst, groupImports, insertString, intersect, MaybeAliases, Replacement, resolveModulePath, StringMap } from './utils';
 
 const DEFINE_PROPS = 'defineProps';
 const DEFINE_EMITS = 'defineEmits';
@@ -79,7 +78,9 @@ export function getAvailableImportsFromAst(ast: Program): GetImportsResult {
     };
 
     for (const node of ast.body) {
-        if (node.type === 'ImportDeclaration') addImport(node);
+        if (node.type === 'ImportDeclaration' && node.specifiers.length) {
+            addImport(node);
+        }
     }
 
     return { imports, importNodes };
@@ -219,11 +220,14 @@ interface ExtractTypesFromSourceOptions {
     // For internal interfaces
     ast?: Program;
     isInternal?: boolean;
+    cleanInterface?: boolean;
 }
 
 interface ExtractResult {
     result: StringMap;
-    extraReplacements?: Replacement[];
+    importNodes: ImportDeclaration[];
+    extraSpecifiers: string[];
+    extraReplacements: Replacement[];
 }
 
 /**
@@ -237,27 +241,38 @@ export async function extractTypesFromSource(
     const {
         relativePath,
         aliases,
-        ast = babelParse(source, { sourceType: 'module', plugins: ['typescript', 'topLevelAwait'] }).program,
+        ast = getAst(source),
         isInternal = false,
+        cleanInterface = false,
         extractedTypes = new Map<string, string>(),
         metaDataMap = new Map<string, InterfaceMetaData>(),
     } = options;
 
-    console.log(types);
-
     const missingTypes: string[] = [];
 
     // Get external types
-    const imports = [...getAvailableImportsFromAst(ast).imports];
+    const { imports, importNodes } = getAvailableImportsFromAst(ast);
 
     if (!isInternal) {
         imports.push(...getAvailableExportsFromAst(ast));
     }
 
+    // TODO: Fix duplicate key name
     const nodeMap = getTSNodeMap(extractAllTypescriptTypesFromAST(ast, isInternal));
+
+    const extraSpecifiers: string[] = [];
+    const extraReplacements: Replacement[] = [];
 
     const extractFromPosition = (start: number | null, end: number | null) =>
         isNumber(start) && isNumber(end) ? source.slice(start, end) : '';
+
+    function removeInterface(node: TSInterfaceDeclaration) {
+        extraReplacements.push({
+            start: node.start!,
+            end: node.end!,
+            replacement: '',
+        });
+    }
 
     function getTSNodeMap(nodes: TSTypes[]): NodeMap {
         const nodeMap = new Map<string, TSTypes>();
@@ -306,7 +321,6 @@ export async function extractTypesFromSource(
             ExtractTypeByNode(node);
         } else {
             missingTypes.push(name);
-            // console.log('Missing types:', missingTypes);
         }
     }
 
@@ -346,8 +360,14 @@ export async function extractTypesFromSource(
     ) {
         for (const extend of interfaces) {
             if (extend.expression.type === 'Identifier') {
-                metaDataMap.set(extend.expression.name, interfaceMetaData);
-                extractTypeByName(extend.expression.name);
+                const name = extend.expression.name;
+                metaDataMap.set(name, interfaceMetaData);
+
+                if (isInternal) {
+                    extraSpecifiers.push(name);
+                }
+
+                extractTypeByName(name);
             }
         }
     }
@@ -378,6 +398,10 @@ export async function extractTypesFromSource(
                 extractFromPosition(bodyStart + 1, bodyEnd - 1),
             ));
 
+            if (isInternal && cleanInterface) {
+                removeInterface(node);
+            }
+
             if (extendsInterfaces) {
                 extractExtendInterfaces(extendsInterfaces, {
                     extendInterfaceName,
@@ -388,12 +412,18 @@ export async function extractTypesFromSource(
             extractedTypes.set(interfaceName, `interface ${interfaceName} ${extractFromPosition(bodyStart, bodyEnd)}`)
 
             if (extendsInterfaces) {
+                if (isInternal) {
+                    removeInterface(node);
+                }
+
                 extractExtendInterfaces(extendsInterfaces, {
                     extendInterfaceName: interfaceName,
                     // 'interface A '.length -> 12
                     interfaceBodyStart: interfaceName.length + 11,
                 });
-            } else if (isInternal) {
+            }
+            // No need to extract an individual interface
+            else if (isInternal) {
                 extractedTypes.delete(interfaceName);
             }
         }
@@ -471,7 +501,9 @@ export async function extractTypesFromSource(
 
     return {
         result: extractedTypes,
-        extraReplacements: [],
+        importNodes,
+        extraSpecifiers,
+        extraReplacements,
     };
 }
 
