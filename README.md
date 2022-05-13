@@ -72,7 +72,7 @@ defineProps<User>()
   - `export * from`
 - nested type parameters (e.g. `defineProps<Props<T>>()`) are not supported.
 - ~~At this stage, the plugin only scans the imported interfaces and does not process the interfaces defined in the SFC~~ Supported in [v0.3.0](https://github.com/Zolyn/vite-plugin-vue-type-imports/blob/main/CHANGELOG.md#030-2022-05-12)
-- HMR is not fully supported right now.
+- ~~HMR is not fully supported right now.~~ Fixed in [v0.3.1](https://github.com/Zolyn/vite-plugin-vue-type-imports/blob/main/CHANGELOG.md#031-2022-05-14)
 - Interface which extends Literal Type or Intersection Type is not supported.
 - Types imported from external packages are not fully supported right now.
 - When interfaces implicitly rely on interfaces with the same name but different structures, the results may be different from what is expected.
