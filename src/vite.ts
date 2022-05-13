@@ -5,7 +5,6 @@ interface PluginOptions {
     clean?: CleanOptions;
 }
 
-// TODO: HMR
 export default function VitePluginVueTypeImports(options: PluginOptions = {}): Plugin {
     const clean = options.clean ?? {};
     let resolvedConfig: ResolvedConfig | undefined;
