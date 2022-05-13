@@ -1,6 +1,11 @@
 
 
-# [0.3.0](https://github.com/Zolyn/vite-plugin-vue-type-imports/compare/v0.2.6...v0.3.0) (2022-05-12)
+## [0.3.1](https://github.com/Zolyn/vite-plugin-vue-type-imports/compare/v0.3.0...v0.3.1) (2022-05-13)
+
+
+### Reverts
+
+* remove cache ([1712481](https://github.com/Zolyn/vite-plugin-vue-type-imports/commit/171248121323301af4afda8bbce8a70a2ebde605))# [0.3.0](https://github.com/Zolyn/vite-plugin-vue-type-imports/compare/v0.2.6...v0.3.0) (2022-05-12)
 
 
 ### Features
