@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import '~/auto-imports';
 import { ButtonProps } from '~/button-types';
 
 // const df = {
