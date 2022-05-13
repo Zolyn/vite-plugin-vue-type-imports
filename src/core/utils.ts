@@ -159,24 +159,6 @@ export function replaceAtIndexes(source: string, replacements: Replacement[], cl
     return result;
 }
 
-export class CodeCache {
-    private container: Map<string, string>;
-
-    public constructor() {
-        this.container = new Map();
-    }
-
-    public get(id: string) {
-        return this.container.get(id);
-    }
-
-    public set(id: string, value: string) {
-        this.container.set(id, value);
-
-        return value;
-    }
-}
-
 export function insertString(source: string, start: number, insertVal: string): string {
     return source.slice(0, start) + insertVal + source.slice(start);
 }
