@@ -102,8 +102,6 @@ export async function resolveModulePath(
         return null;
     }
 
-    // console.log('MaybePath', maybePath.replace(/\\/g, '/'));
-
     const files = await fg([`${maybePath}`, `${maybePath}*.+(ts|d.ts)`, `${maybePath}*/index.+(ts|d.ts)`], {
         onlyFiles: true,
     });

@@ -77,8 +77,6 @@ export async function transform(code: string, { id, aliases, clean }: TransformO
         }
     });
 
-    console.log(replacements);
-
     const inlinedTypes = resolvedTypes.map((x) => x[1]).join('\n');
 
     const transformedCode = [

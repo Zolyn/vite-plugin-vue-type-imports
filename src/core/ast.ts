@@ -248,6 +248,8 @@ export async function extractTypesFromSource(
         metaDataMap = new Map<string, InterfaceMetaData>(),
     } = options;
 
+    // console.log(relativePath);
+
     const missingTypes: string[] = [];
 
     // Get external types
