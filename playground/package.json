@@ -1,27 +1,27 @@
 {
-  "name": "playground",
-  "version": "0.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "serve": "vite preview"
-  },
-  "devDependencies": {
-    "@iconify/json": "^1.1.461",
-    "@unocss/preset-attributify": "^0.7.7",
-    "@unocss/preset-icons": "^0.7.7",
-    "@unocss/preset-uno": "^0.7.7",
-    "@vitejs/plugin-vue": "^1.10.2",
-    "@zolyn/vite-plugin-vue-type-imports": "workspace:^0.2.5",
-    "unocss": "^0.7.7",
-    "unplugin-auto-import": "^0.4.20",
-    "unplugin-vue-components": "^0.17.21",
-    "vite": "^2.9.1",
-    "vite-plugin-inspect": "^0.4.3"
-  },
-  "dependencies": {
-    "@vueuse/core": "^6.9.2",
-    "vue": "^3.2.31"
-  }
+    "name": "playground",
+    "version": "0.0.0",
+    "private": true,
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "serve": "vite preview"
+    },
+    "dependencies": {
+        "@vueuse/core": "^6.9.2",
+        "vue": "^3.2.31"
+    },
+    "devDependencies": {
+        "@iconify/json": "^1.1.461",
+        "@unocss/preset-attributify": "^0.7.7",
+        "@unocss/preset-icons": "^0.7.7",
+        "@unocss/preset-uno": "^0.7.7",
+        "@vitejs/plugin-vue": "^1.10.2",
+        "@zolyn/vite-plugin-vue-type-imports": "workspace:*",
+        "unocss": "^0.7.7",
+        "unplugin-auto-import": "^0.4.20",
+        "unplugin-vue-components": "^0.17.21",
+        "vite": "^2.9.1",
+        "vite-plugin-inspect": "^0.4.3"
+    }
 }
