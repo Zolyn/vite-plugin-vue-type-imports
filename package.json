@@ -33,6 +33,7 @@
     "test": "vitest",
     "test:ci": "cross-env CI=true vitest",
     "test:ui": "vitest --ui",
+    "test:temp": "cross-env TEST_TEMP=true vitest",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "coverage": "vitest run --coverage"
   },

@@ -14,5 +14,5 @@ defineTransformTest({
   codeGetter,
   structureRE,
   realPath: true,
-  skip: false,
+  skip: !!process.env.TEST_TEMP,
 })
