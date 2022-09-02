@@ -2,3 +2,6 @@ node_modules
 .DS_Store
 dist
 coverage
+**/__snapshots__/temp.test.ts.snap
+**/fixtures/temp
+temp.test.ts
